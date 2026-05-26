@@ -16,6 +16,7 @@ public class SpecialistsVo {
     private String name;
     private SpecialistStatus status;
     private List<String> expertiseIds;
+    private List<String> expertiseNames;
     private BigDecimal price;
 }
 

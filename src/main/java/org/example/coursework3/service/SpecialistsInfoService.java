@@ -4,39 +4,40 @@ import lombok.RequiredArgsConstructor;
 import org.example.coursework3.entity.Expertise;
 import org.example.coursework3.entity.Specialist;
 import org.example.coursework3.entity.SpecialistStatus;
-import org.example.coursework3.exception.MsgException;
+import org.example.coursework3.entity.Slot;
+import org.example.coursework3.repository.SlotRepository;
 import org.example.coursework3.repository.SpecialistsRepository;
-import org.example.coursework3.vo.*;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import org.example.coursework3.vo.SpecialistsDetailVo;
+import org.example.coursework3.vo.SpecialistsExpertiseBriefVo;
+import org.example.coursework3.vo.SpecialistsPageVo;
+import org.example.coursework3.vo.SpecialistsVo;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
 public class SpecialistsInfoService {
 
     private final SpecialistsRepository specialistRepository;
-    /**
-     * Retrieves the full profile details for a specific specialist.
-     * Includes biographical information, pricing, and a mapped list of expertise categories.
-     *
-     * @param id The unique identifier of the specialist.
-     * @return A {@link SpecialistsDetailVo} containing the specialist's comprehensive data.
-     * @throws RuntimeException if the specialist record is not found in the database.
-     */
+    private final SlotRepository slotRepository;
+
     @Transactional(readOnly = true)
     public SpecialistsDetailVo getSpecialistDetail(String id) {
-        Specialist specialist = specialistRepository.findById(id).orElseThrow(() -> new RuntimeException("specialist not found: " + id));
-        List<SpecialistsExpertiseBriefVo> expertise = specialist.getExpertises().stream().map(e -> new SpecialistsExpertiseBriefVo(e.getId(), e.getName())).toList();
+        Specialist specialist = specialistRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("specialist not found: " + id));
+        List<SpecialistsExpertiseBriefVo> expertise = specialist.getExpertises()
+                .stream()
+                .map(e -> new SpecialistsExpertiseBriefVo(e.getId(), e.getName()))
+                .toList();
 
         return new SpecialistsDetailVo(
                 specialist.getUserId(),
@@ -46,58 +47,92 @@ public class SpecialistsInfoService {
                 specialist.getPrice()
         );
     }
-    /**
-     * Retrieves a paginated list of specialists, optionally filtered by a specific expertise category.
-     *
-     * @param expertiseId Optional: The ID of an expertise category to filter results.
-     * @param page        The current page number (1-based index).
-     * @param pageSize    The maximum number of records to return per page.
-     * @return A {@link SpecialistsPageVo} containing the current page items and total record count.
-     */
+
     @Transactional(readOnly = true)
-    public SpecialistsPageVo getSpecialists(String expertiseId, int page, int pageSize) {
-        // Ensure safe pagination parameters
+    public SpecialistsPageVo getSpecialists(
+            String expertiseId,
+            String keyword,
+            String date,
+            BigDecimal maxPrice,
+            int page,
+            int pageSize
+    ) {
         int safePage = Math.max(page, 1);
         int safePageSize = Math.max(pageSize, 1);
-        Pageable pageable = PageRequest.of(safePage - 1, safePageSize);
-        Page<Specialist> specialistPage;
-        // Perform conditional database query
-        if (expertiseId != null && !expertiseId.isBlank()) {
-            specialistPage = specialistRepository.findDistinctByExpertises_Id(expertiseId, pageable);
-        } else {
-            specialistPage = specialistRepository.findAll(pageable);
-        }
+        String normalizedExpertiseId = expertiseId == null ? "" : expertiseId.trim();
+        String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        LocalDate requestedDate = (date == null || date.isBlank()) ? null : LocalDate.parse(date);
+
+        List<Specialist> specialists = normalizedExpertiseId.isBlank()
+                ? specialistRepository.findAll()
+                : specialistRepository.findDistinctByExpertises_Id(normalizedExpertiseId, Pageable.unpaged()).getContent();
+
+        List<Specialist> filtered = specialists.stream()
+                .filter(Objects::nonNull)
+                .filter(specialist -> specialist.getStatus() != SpecialistStatus.Inactive)
+                .filter(specialist -> matchesKeyword(specialist, normalizedKeyword))
+                .filter(specialist -> matchesMaxPrice(specialist, maxPrice))
+                .filter(specialist -> matchesAvailableDate(specialist, requestedDate))
+                .sorted(Comparator.comparing(Specialist::getName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        int fromIndex = Math.min((safePage - 1) * safePageSize, filtered.size());
+        int toIndex = Math.min(fromIndex + safePageSize, filtered.size());
+        List<Specialist> pageContent = filtered.subList(fromIndex, toIndex);
 
         List<SpecialistsVo> items = new ArrayList<>();
-        // Transform entities to View Objects
-        for (Specialist s : specialistPage.getContent()) {
-//            if (s.getStatus()== SpecialistStatus.Inactive){
-//                continue;
-//            }
+        for (Specialist specialist : pageContent) {
             List<String> expertiseIds = new ArrayList<>();
-
-            for (Expertise e : s.getExpertises()) {
-                expertiseIds.add(e.getId());
+            List<String> expertiseNames = new ArrayList<>();
+            for (Expertise expertise : specialist.getExpertises()) {
+                expertiseIds.add(expertise.getId());
+                expertiseNames.add(expertise.getName());
             }
 
-            SpecialistsVo vo = new SpecialistsVo(
-                    s.getUserId(),
-                    s.getName(),
-                    s.getStatus(),
+            items.add(new SpecialistsVo(
+                    specialist.getUserId(),
+                    specialist.getName(),
+                    specialist.getStatus(),
                     expertiseIds,
-                    s.getPrice()
-            );
-
-            items.add(vo);
+                    expertiseNames,
+                    specialist.getPrice()
+            ));
         }
 
-        return new SpecialistsPageVo(
-                items,
-                specialistPage.getTotalElements(),
-                safePage,
-                safePageSize
-        );
+        return new SpecialistsPageVo(items, filtered.size(), safePage, safePageSize);
     }
 
-}
+    private boolean matchesKeyword(Specialist specialist, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        if (specialist.getName() != null && specialist.getName().toLowerCase(Locale.ROOT).contains(keyword)) {
+            return true;
+        }
+        return specialist.getExpertises().stream()
+                .map(Expertise::getName)
+                .filter(Objects::nonNull)
+                .map(name -> name.toLowerCase(Locale.ROOT))
+                .anyMatch(name -> name.contains(keyword));
+    }
 
+    private boolean matchesMaxPrice(Specialist specialist, BigDecimal maxPrice) {
+        if (maxPrice == null) {
+            return true;
+        }
+        if (specialist.getPrice() == null) {
+            return false;
+        }
+        return specialist.getPrice().compareTo(maxPrice) <= 0;
+    }
+
+    private boolean matchesAvailableDate(Specialist specialist, LocalDate requestedDate) {
+        if (requestedDate == null) {
+            return true;
+        }
+        List<Slot> slots = slotRepository.findBySpecialistId(specialist.getUserId());
+        return slots.stream().anyMatch(slot ->
+                Boolean.TRUE.equals(slot.getAvailable()) &&
+                        requestedDate.equals(slot.getStartTime().toLocalDate()));
+    }
+}

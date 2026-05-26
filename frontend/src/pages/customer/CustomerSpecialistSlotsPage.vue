@@ -6,14 +6,15 @@ import { showAlertModal } from '@/ui/alertModal'
 
 const props = defineProps({
   id: { type: String, required: true },
-  bookingId: { type: String, default: '' }
+  bookingId: { type: String, default: '' },
+  date: { type: String, default: '' }
 })
 const router = useRouter()
 
 const isReschedule = computed(() => !!props.bookingId)
 
 const slots = ref([])
-const slotDate = ref(new Date().toISOString().slice(0, 10))
+const slotDate = ref(props.date || new Date().toISOString().slice(0, 10))
 const selectedSlotId = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -350,6 +351,15 @@ watch(
 )
 
 watch(slotDate, () => loadSlots())
+
+watch(
+  () => props.date,
+  (next) => {
+    if (next && next !== slotDate.value) {
+      slotDate.value = next
+    }
+  }
+)
 
 defineExpose({
   selectedSlotId,

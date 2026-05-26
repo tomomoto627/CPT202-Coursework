@@ -68,7 +68,8 @@ const routes = [
         component: CustomerSpecialistSlotsPage,
         props: (route) => ({
           id: route.params.id,
-          bookingId: route.query.bookingId || ''
+          bookingId: route.query.bookingId || '',
+          date: route.query.date || ''
         })
       },
       { path: 'bookings', name: 'customer.bookings', component: CustomerBookingsPage },

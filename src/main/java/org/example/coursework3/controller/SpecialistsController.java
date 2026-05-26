@@ -32,10 +32,13 @@ public class SpecialistsController {
     @GetMapping("/specialists")
     public Result<SpecialistsPageVo> getSpecialists(
             @RequestParam(required = false) String expertiseId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) java.math.BigDecimal maxPrice,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize
     ) {
-        return Result.success(specialistInfoService.getSpecialists(expertiseId, page, pageSize));
+        return Result.success(specialistInfoService.getSpecialists(expertiseId, keyword, date, maxPrice, page, pageSize));
     }
 
     @GetMapping("/specialists/{id}")
