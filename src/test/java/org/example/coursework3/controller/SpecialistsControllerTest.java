@@ -7,7 +7,11 @@ import org.example.coursework3.entity.SpecialistStatus;
 import org.example.coursework3.exception.MsgException;
 import org.example.coursework3.service.SlotInfoService;
 import org.example.coursework3.service.SpecialistsInfoService;
-import org.example.coursework3.vo.*;
+import org.example.coursework3.vo.SlotVo;
+import org.example.coursework3.vo.SpecialistsDetailVo;
+import org.example.coursework3.vo.SpecialistsExpertiseBriefVo;
+import org.example.coursework3.vo.SpecialistsPageVo;
+import org.example.coursework3.vo.SpecialistsVo;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -19,7 +23,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -42,13 +49,13 @@ class SpecialistsControllerTest {
     void getSpecialists_returnsPagedResult() throws Exception {
         SpecialistsVo specialistVo = new SpecialistsVo(
                 "u3", "Dr.Smith", SpecialistStatus.Active,
-                List.of("e1", "e2"), BigDecimal.valueOf(100)
+                List.of("e1", "e2"), List.of("Mental Health", "Stress Management"), BigDecimal.valueOf(100)
         );
         SpecialistsPageVo pageVo = new SpecialistsPageVo(
                 List.of(specialistVo), 1L, 1, 10
         );
 
-        when(specialistsInfoService.getSpecialists(anyString(), anyInt(), anyInt()))
+        when(specialistsInfoService.getSpecialists(any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(pageVo);
 
         mockMvc.perform(get("/specialists")
@@ -64,7 +71,7 @@ class SpecialistsControllerTest {
     @Test
     void getSpecialists_usesDefaultPageParamsWhenOmitted() throws Exception {
         SpecialistsPageVo emptyPage = new SpecialistsPageVo(List.of(), 0L, 1, 10);
-        when(specialistsInfoService.getSpecialists(isNull(), eq(1), eq(10))).thenReturn(emptyPage);
+        when(specialistsInfoService.getSpecialists(isNull(), isNull(), isNull(), isNull(), eq(1), eq(10))).thenReturn(emptyPage);
 
         mockMvc.perform(get("/specialists"))
                 .andExpect(status().isOk())

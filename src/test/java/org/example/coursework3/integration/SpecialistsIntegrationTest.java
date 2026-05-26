@@ -206,6 +206,38 @@ class SpecialistsIntegrationTest {
     }
 
     @Test
+    void getSpecialists_filtersByKeywordAgainstExpertiseName() throws Exception {
+        mockMvc.perform(get("/specialists")
+                        .param("keyword", "career")
+                        .param("page", "1")
+                        .param("pageSize", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value("u4"));
+    }
+
+    @Test
+    void getSpecialists_filtersByMaxPrice() throws Exception {
+        mockMvc.perform(get("/specialists")
+                        .param("maxPrice", "90")
+                        .param("page", "1")
+                        .param("pageSize", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value("u4"));
+    }
+
+    @Test
+    void getSpecialists_filtersByAvailableDate() throws Exception {
+        mockMvc.perform(get("/specialists")
+                        .param("date", "2026-03-25")
+                        .param("page", "1")
+                        .param("pageSize", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2));
+    }
+
+    @Test
     void getSpecialistDetail_returnsDetailFor_u3() throws Exception {
         mockMvc.perform(get("/specialists/u3"))
                 .andExpect(status().isOk())
