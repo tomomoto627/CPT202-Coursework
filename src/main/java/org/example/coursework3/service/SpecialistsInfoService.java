@@ -54,6 +54,7 @@ public class SpecialistsInfoService {
             String keyword,
             String date,
             BigDecimal maxPrice,
+            boolean activeOnly,
             int page,
             int pageSize
     ) {
@@ -69,7 +70,7 @@ public class SpecialistsInfoService {
 
         List<Specialist> filtered = specialists.stream()
                 .filter(Objects::nonNull)
-                .filter(specialist -> specialist.getStatus() != SpecialistStatus.Inactive)
+                .filter(specialist -> !activeOnly || specialist.getStatus() != SpecialistStatus.Inactive)
                 .filter(specialist -> matchesKeyword(specialist, normalizedKeyword))
                 .filter(specialist -> matchesMaxPrice(specialist, maxPrice))
                 .filter(specialist -> matchesAvailableDate(specialist, requestedDate))

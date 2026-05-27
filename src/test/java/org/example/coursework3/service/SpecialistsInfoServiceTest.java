@@ -94,7 +94,7 @@ class SpecialistsInfoServiceTest {
 
         when(specialistsRepository.findAll()).thenReturn(List.of(specialist));
 
-        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, null, null, null, 1, 10);
+        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, null, null, null, false, 1, 10);
         assertEquals(1, pageVo.getTotal());
         assertEquals(1, pageVo.getPage());
         assertEquals(10, pageVo.getPageSize());
@@ -125,7 +125,7 @@ class SpecialistsInfoServiceTest {
         when(specialistsRepository.findDistinctByExpertises_Id(eq("e1"), any()))
                 .thenReturn(new PageImpl<>(List.of(specialist), PageRequest.of(0, 10), 1));
 
-        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists("e1", null, null, null, 1, 10);
+        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists("e1", null, null, null, false, 1, 10);
         assertEquals(1, pageVo.getTotal());
         assertEquals("u3", pageVo.getItems().get(0).getId());
         assertEquals(List.of("e1"), pageVo.getItems().get(0).getExpertiseIds());
@@ -135,7 +135,7 @@ class SpecialistsInfoServiceTest {
     void getSpecialists_usesFindAllWhenExpertiseIdIsBlank() {
         when(specialistsRepository.findAll()).thenReturn(List.of());
 
-        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists("   ", null, null, null, 1, 10);
+        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists("   ", null, null, null, false, 1, 10);
 
         assertEquals(0, pageVo.getTotal());
         assertTrue(pageVo.getItems().isEmpty());
@@ -149,7 +149,7 @@ class SpecialistsInfoServiceTest {
 
         when(specialistsRepository.findAll()).thenReturn(List.of(specialist));
 
-        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, null, null, null, 0, 0);
+        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, null, null, null, false, 0, 0);
         assertEquals(1, pageVo.getPage());
         assertEquals(1, pageVo.getPageSize());
     }
@@ -187,7 +187,7 @@ class SpecialistsInfoServiceTest {
 
         when(specialistsRepository.findAll()).thenReturn(List.of(specialist));
 
-        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, "computer", null, null, 1, 10);
+        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, "computer", null, null, false, 1, 10);
         assertEquals(1, pageVo.getTotal());
         assertEquals(List.of("Computer Science"), pageVo.getItems().get(0).getExpertiseNames());
     }
@@ -211,14 +211,40 @@ class SpecialistsInfoServiceTest {
         Slot slot = new Slot();
         slot.setSpecialistId("u3");
         slot.setAvailable(true);
-        slot.setStartTime(LocalDateTime.of(2026, 5, 26, 10, 0));
+        slot.setStartTime(LocalDateTime.of(2026, 5, 27, 10, 0));
 
         when(specialistsRepository.findAll()).thenReturn(List.of(cheap, expensive));
         when(slotRepository.findBySpecialistId("u3")).thenReturn(List.of(slot));
-        when(slotRepository.findBySpecialistId("u4")).thenReturn(List.of());
+//        when(slotRepository.findBySpecialistId("u4")).thenReturn(List.of());
 
-        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, null, "2026-05-26", BigDecimal.valueOf(100), 1, 10);
+        SpecialistsPageVo pageVo = specialistsInfoService.getSpecialists(null, null, "2026-05-27", BigDecimal.valueOf(100), false, 1, 10);
         assertEquals(1, pageVo.getTotal());
         assertEquals("u3", pageVo.getItems().get(0).getId());
+    }
+
+    @Test
+    void getSpecialists_keepsInactiveByDefaultButCanFilterActiveOnly() {
+        Specialist active = new Specialist();
+        active.setUserId("u3");
+        active.setName("Dr.Active");
+        active.setStatus(SpecialistStatus.Active);
+        active.setExpertises(List.of());
+        active.setPrice(BigDecimal.valueOf(80));
+
+        Specialist inactive = new Specialist();
+        inactive.setUserId("u4");
+        inactive.setName("Dr.Inactive");
+        inactive.setStatus(SpecialistStatus.Inactive);
+        inactive.setExpertises(List.of());
+        inactive.setPrice(BigDecimal.valueOf(80));
+
+        when(specialistsRepository.findAll()).thenReturn(List.of(active, inactive));
+
+        SpecialistsPageVo adminLikePage = specialistsInfoService.getSpecialists(null, null, null, null, false, 1, 10);
+        SpecialistsPageVo customerLikePage = specialistsInfoService.getSpecialists(null, null, null, null, true, 1, 10);
+
+        assertEquals(2, adminLikePage.getTotal());
+        assertEquals(1, customerLikePage.getTotal());
+        assertEquals("u3", customerLikePage.getItems().get(0).getId());
     }
 }

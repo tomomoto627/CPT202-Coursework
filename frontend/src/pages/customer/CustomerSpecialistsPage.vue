@@ -67,7 +67,8 @@ async function loadSpecialists() {
   try {
     const params = {
       page: query.value.page,
-      pageSize: query.value.pageSize
+      pageSize: query.value.pageSize,
+      activeOnly: true
     }
     if (expertiseId.value) params.expertiseId = expertiseId.value
     if (keyword.value.trim()) params.keyword = keyword.value.trim()

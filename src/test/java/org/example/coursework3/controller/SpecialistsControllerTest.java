@@ -55,7 +55,7 @@ class SpecialistsControllerTest {
                 List.of(specialistVo), 1L, 1, 10
         );
 
-        when(specialistsInfoService.getSpecialists(any(), any(), any(), any(), anyInt(), anyInt()))
+        when(specialistsInfoService.getSpecialists(any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(pageVo);
 
         mockMvc.perform(get("/specialists")
@@ -71,7 +71,7 @@ class SpecialistsControllerTest {
     @Test
     void getSpecialists_usesDefaultPageParamsWhenOmitted() throws Exception {
         SpecialistsPageVo emptyPage = new SpecialistsPageVo(List.of(), 0L, 1, 10);
-        when(specialistsInfoService.getSpecialists(isNull(), isNull(), isNull(), isNull(), eq(1), eq(10))).thenReturn(emptyPage);
+        when(specialistsInfoService.getSpecialists(isNull(), isNull(), isNull(), isNull(), eq(false), eq(1), eq(10))).thenReturn(emptyPage);
 
         mockMvc.perform(get("/specialists"))
                 .andExpect(status().isOk())
