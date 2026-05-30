@@ -32,4 +32,8 @@ public interface BookingRepository extends JpaRepository<Booking,String> {
     List<Booking> findByStatusIn(List<BookingStatus> statuses);
 
     Booking getBookingById(String id);
+
+    List<Booking> getBookingBySlotId(String slotId);
+
+    String id(String id);
 }

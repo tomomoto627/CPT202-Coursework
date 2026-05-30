@@ -5,6 +5,7 @@ import org.example.coursework3.dto.request.UpdateSelfInfoRequest;
 import org.example.coursework3.entity.User;
 import org.example.coursework3.exception.MsgException;
 import org.example.coursework3.repository.UserRepository;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 public class UpdateInfoService {
 
     private final UserRepository userRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
 
     public User updateSelfInfo(String userId, UpdateSelfInfoRequest request) {
         User user;
@@ -45,7 +47,7 @@ public class UpdateInfoService {
         return userRepository.save(user);
     }
 
-    public User changePassword(String userId, String oldPassword, String newPassword, String confirmPassword) {
+    public void changePassword(String userId, String oldPassword, String newPassword, String confirmPassword) {
         User user;
         try {
             user = userRepository.findById(userId);
@@ -53,7 +55,7 @@ public class UpdateInfoService {
             throw new MsgException("User not found");
         }
         changePassword(user, oldPassword, newPassword, confirmPassword);
-        return userRepository.save(user);
+        userRepository.save(user);
     }
 
     public void verifyOldPassword(String userId, String oldPassword) {
@@ -66,7 +68,7 @@ public class UpdateInfoService {
         if (!hasText(oldPassword)) {
             throw new MsgException("Please enter current password");
         }
-        if (!user.getPasswordHash().equals(oldPassword)) {
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
             throw new MsgException("Old password is incorrect");
         }
     }
@@ -75,7 +77,7 @@ public class UpdateInfoService {
         if (!hasText(oldPassword) || !hasText(newPassword) || !hasText(confirmPassword)) {
             throw new MsgException("oldPassword, newPassword and confirmPassword are required");
         }
-        if (!user.getPasswordHash().equals(oldPassword)) {
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
             throw new MsgException("Old password is incorrect");
         }
         if (!newPassword.equals(confirmPassword)) {
@@ -90,7 +92,7 @@ public class UpdateInfoService {
         if (newPassword.equals(oldPassword)) {
             throw new MsgException("New password must be different from old password");
         }
-        user.setPasswordHash(newPassword);
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
     }
 
     private boolean hasText(String value) {

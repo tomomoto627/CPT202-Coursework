@@ -29,6 +29,7 @@ import AdminExpertisePage from '@/pages/admin/AdminExpertisePage.vue'
 import AdminSlotsPage from '@/pages/admin/AdminSlotsPage.vue'
 import AdminSlotCreatePage from '@/pages/admin/AdminSlotCreatePage.vue'
 import AdminPricingPage from '@/pages/admin/AdminPricingPage.vue'
+import AdminPricingRuleCreatePage from '@/pages/admin/AdminPricingRuleCreatePage.vue'
 import AdminBookingsPage from '@/pages/admin/AdminBookingsPage.vue'
 
 const ROLE = {
@@ -67,7 +68,8 @@ const routes = [
         component: CustomerSpecialistSlotsPage,
         props: (route) => ({
           id: route.params.id,
-          bookingId: route.query.bookingId || ''
+          bookingId: route.query.bookingId || '',
+          date: route.query.date || ''
         })
       },
       { path: 'bookings', name: 'customer.bookings', component: CustomerBookingsPage },
@@ -102,6 +104,7 @@ const routes = [
       { path: 'slots', name: 'admin.slots', component: AdminSlotsPage },
       { path: 'slots/create', name: 'admin.slotCreate', component: AdminSlotCreatePage },
       { path: 'pricing', name: 'admin.pricing', component: AdminPricingPage },
+      { path: 'pricing/create', name: 'admin.pricingCreate', component: AdminPricingRuleCreatePage },
       { path: 'bookings', name: 'admin.bookings', component: AdminBookingsPage }
     ]
   },

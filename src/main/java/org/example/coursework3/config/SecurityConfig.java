@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/pricing/quote").permitAll()
                         .requestMatchers("/specialist/**").permitAll()
                         .requestMatchers("/specialists/**").permitAll()
+                        .requestMatchers("/bookings/**").permitAll()
                         .anyRequest().authenticated()
                 );
         return http.build();

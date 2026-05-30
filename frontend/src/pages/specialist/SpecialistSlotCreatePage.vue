@@ -22,11 +22,17 @@ const createForm = ref({
 
 const loading = ref(false)
 const createLoading = ref(false)
+const pricingRules = ref([])
+const pricingRulesLoading = ref(false)
+const pricingRulesError = ref('')
 const DETAIL_MAX = 300
 
 const createDurationMinutes = computed(() => {
   return calcDurationMinutes(createForm.value.start, createForm.value.end)
 })
+
+const pricingRulesPreview = computed(() => pricingRules.value.slice(0, 4))
+const extraPricingRulesCount = computed(() => Math.max(0, pricingRules.value.length - pricingRulesPreview.value.length))
 
 function calcDurationMinutes(startStr, endStr) {
   if (!startStr || !endStr) return 0
@@ -48,6 +54,13 @@ function isValidTimeRange(startValue, endValue) {
   return String(startValue) < String(endValue)
 }
 
+function formatCurrency(amountValue, currencyValue = 'CNY') {
+  const amount = Number(amountValue)
+  const currency = String(currencyValue || 'CNY').trim().toUpperCase() || 'CNY'
+  if (!Number.isFinite(amount)) return '--'
+  return `${amount.toFixed(2)} ${currency}`
+}
+
 function buildSlotPayload(form) {
   return {
     date: form.date,
@@ -59,6 +72,20 @@ function buildSlotPayload(form) {
     duration: calcDurationMinutes(form.start, form.end),
     type: String(form.type ?? '').trim() || 'online',
     detail: String(form.detail ?? '').trim()
+  }
+}
+
+async function loadPricingRules() {
+  pricingRulesLoading.value = true
+  pricingRulesError.value = ''
+  try {
+    const rows = await api.specialistListPricingRules()
+    pricingRules.value = Array.isArray(rows) ? rows : []
+  } catch (e) {
+    pricingRules.value = []
+    pricingRulesError.value = e?.message || 'Failed to load your pricing rules.'
+  } finally {
+    pricingRulesLoading.value = false
   }
 }
 
@@ -135,6 +162,7 @@ function goBack() {
 }
 
 onMounted(async () => {
+  await loadPricingRules()
   if (isEditMode) {
     await loadSlotDetails()
   }
@@ -219,7 +247,8 @@ onMounted(async () => {
 
         <div class="field-grid field-grid--two">
           <label class="field">
-            <span class="label">Amount</span>
+            <span class="label">Amount
+            </span>
             <input 
               v-model="createForm.amount" 
               type="number" 
@@ -281,6 +310,27 @@ onMounted(async () => {
         </label>
 
         <div class="form-actions">
+          <div class="tip-wrap">
+            <span class="icon">!</span>
+            <div class="tooltip">
+              <template v-if="pricingRulesLoading">
+                Loading your pricing rules...
+              </template>
+              <template v-else-if="pricingRules.length">
+                <div class="tooltip-title"> Please follow your recommended Price!<br>
+                  Otherwise you will be punished!</div>
+                <div v-for="rule in pricingRulesPreview" :key="rule.id" class="tooltip-rule">
+                  {{ rule.duration }} min {{ rule.type }}: {{ formatCurrency(rule.amount, rule.currency) }}
+                </div>
+                <div v-if="extraPricingRulesCount" class="tooltip-more">
+                  +{{ extraPricingRulesCount }} more rules
+                </div>
+              </template>
+              <template v-else>
+                {{ pricingRulesError || 'No pricing rules found.' }}
+              </template>
+            </div>
+          </div>
           <button 
             type="button" 
             class="btn-secondary" 
@@ -304,6 +354,69 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.tip-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+  margin-top: 12px;
+}
+
+/* 感叹号 */
+.icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #faad14;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+}
+
+/* tooltip 本体 */
+.tooltip {
+  position: absolute;
+  bottom: 130%; /* 在上方 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+
+  padding: 8px 10px;
+  border-radius: 6px;
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* hover 显示 */
+.tooltip-title {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.tooltip-rule,
+.tooltip-more {
+  color: #e5e7eb;
+}
+
+.tooltip-more {
+  margin-top: 4px;
+}
+
+.tip-wrap:hover .tooltip {
+  opacity: 1;
+}
 .page__header {
   margin: 8px 0 20px;
   padding: 0;

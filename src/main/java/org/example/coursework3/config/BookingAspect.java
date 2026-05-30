@@ -16,10 +16,10 @@ public class BookingAspect {
     @Autowired
     private SpecialistBookingService bookingService;
 
-    // 获取刚刚保存成功的 Booking 对象 / list<Booking> auto-completed, rejected
+    // Acquire Booking Object / list<Booking> auto-completed, rejected
     @AfterReturning(
             pointcut = "execution(* org.example.coursework3.repository.BookingRepository.save*(..))",
-            returning = "savedBooking"  // 拿到保存后的对象
+            returning = "savedBooking"
     )
     public void afterBookingSave(Object savedBooking) {
         try {
@@ -34,7 +34,7 @@ public class BookingAspect {
                 }
             }
         } catch (Exception e) {
-            log.warn("状态历史记录失败: {}", e.getMessage());
+            log.warn("Fail to record history operation: {}", e.getMessage());
         }
     }
 }

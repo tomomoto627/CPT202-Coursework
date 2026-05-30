@@ -6,14 +6,15 @@ import { showAlertModal } from '@/ui/alertModal'
 
 const props = defineProps({
   id: { type: String, required: true },
-  bookingId: { type: String, default: '' }
+  bookingId: { type: String, default: '' },
+  date: { type: String, default: '' }
 })
 const router = useRouter()
 
 const isReschedule = computed(() => !!props.bookingId)
 
 const slots = ref([])
-const slotDate = ref(new Date().toISOString().slice(0, 10))
+const slotDate = ref(props.date || new Date().toISOString().slice(0, 10))
 const selectedSlotId = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -24,6 +25,21 @@ const previewError = ref('')
 const weeklyPreview = ref([])
 const previewOpen = ref(false)
 const todayDate = new Date().toISOString().slice(0, 10)
+const paymentModalOpen = ref(false)
+const paymentBusy = ref(false)
+const paymentError = ref('')
+const paymentContext = ref({
+  paymentIntentId: '',
+  paymentId: '',
+  specialistId: '',
+  slotId: '',
+  note: '',
+  amount: 0,
+  currency: 'CNY',
+  slotLabel: '--',
+  qrCodeUrl: '',
+  mockMode: false
+})
 
 function formatSlotTime(value) {
   const raw = String(value ?? '').trim()
@@ -55,6 +71,164 @@ function formatSession(slot) {
 
 function formatDetail(slot) {
   return String(slot?.detail ?? '').trim() || '--'
+}
+
+function resolveSelectedSlot() {
+  return slots.value.find((sl) => (sl.slotId ?? sl.id) === selectedSlotId.value) ?? null
+}
+
+async function openPaymentModal(paymentIntentId, selectedSlot, draftNote) {
+  const safePaymentIntentId = String(paymentIntentId ?? '').trim()
+  if (!safePaymentIntentId) {
+    throw new Error('Missing payment intent id')
+  }
+
+  paymentBusy.value = true
+  paymentError.value = ''
+  const specialistId = String(props.id ?? '').trim()
+  const slotId = String(selectedSlot?.slotId ?? selectedSlot?.id ?? '').trim()
+
+  const slotAmount = Number(selectedSlot?.amount ?? 0)
+  const safeSlotAmount = Number.isNaN(slotAmount) ? 0 : slotAmount
+  const slotCurrency = String(selectedSlot?.currency ?? 'CNY').trim() || 'CNY'
+  const slotLabel = formatSlotRange(selectedSlot)
+
+  try {
+    const payment = await api.createBookingPayment(safePaymentIntentId, {
+      specialistId,
+      slotId,
+      amount: safeSlotAmount,
+      currency: slotCurrency,
+      scene: 'booking'
+    })
+
+    paymentContext.value = {
+      paymentIntentId: safePaymentIntentId,
+      paymentId: String(payment?.paymentId ?? '').trim(),
+      specialistId,
+      slotId,
+      note: String(draftNote ?? '').trim(),
+      amount: Number(payment?.amount ?? safeSlotAmount) || 0,
+      currency: String(payment?.currency ?? slotCurrency).trim() || 'CNY',
+      slotLabel,
+      qrCodeUrl: String(payment?.qrCodeUrl ?? '').trim(),
+      mockMode: false
+    }
+  } catch (e) {
+    paymentContext.value = {
+      paymentIntentId: safePaymentIntentId,
+      paymentId: '',
+      specialistId,
+      slotId,
+      note: String(draftNote ?? '').trim(),
+      amount: safeSlotAmount,
+      currency: slotCurrency,
+      slotLabel,
+      qrCodeUrl: '',
+      mockMode: false
+    }
+    paymentError.value = e?.message || 'Failed to create Alipay order'
+  } finally {
+    paymentBusy.value = false
+    paymentModalOpen.value = true
+  }
+}
+
+function closePaymentModal() {
+  paymentModalOpen.value = false
+  paymentError.value = ''
+}
+
+async function confirmPaymentAndGoBookings() {
+  if (!paymentContext.value.paymentIntentId) {
+    paymentError.value = 'Missing payment intent id for payment confirmation'
+    return
+  }
+
+  paymentBusy.value = true
+  paymentError.value = ''
+  try {
+    await api.confirmBookingPayment(paymentContext.value.paymentIntentId, {
+      paymentId: paymentContext.value.paymentId || undefined,
+      status: 'SUCCESS'
+    })
+    await api.createBooking({
+      specialistId: paymentContext.value.specialistId,
+      slotId: paymentContext.value.slotId,
+      paymentId: paymentContext.value.paymentId,
+      note: paymentContext.value.note || undefined
+    })
+  } catch (e) {
+    paymentError.value = e?.message || 'Failed to confirm payment'
+    paymentBusy.value = false
+    return
+  }
+
+  paymentModalOpen.value = false
+  showAlertModal({
+    type: 'success',
+    message: 'Payment successful.',
+    onClose: () =>
+      router.push({
+        name: 'customer.bookings',
+        query: { refresh: String(Date.now()) }
+      })
+  })
+  paymentBusy.value = false
+}
+
+async function mockPaymentAndGoBookings() {
+  if (!paymentContext.value.paymentIntentId) {
+    paymentError.value = 'Missing payment intent id for mock payment'
+    return
+  }
+
+  paymentBusy.value = true
+  paymentError.value = ''
+  try {
+    await api.mockBookingPayment(paymentContext.value.paymentIntentId)
+    await api.createBooking({
+      specialistId: paymentContext.value.specialistId,
+      slotId: paymentContext.value.slotId,
+      paymentId: paymentContext.value.paymentId,
+      note: paymentContext.value.note || undefined
+    })
+  } catch (e) {
+    paymentError.value = e?.message || 'Failed to mock payment'
+    paymentBusy.value = false
+    return
+  }
+
+  paymentModalOpen.value = false
+  showAlertModal({
+    type: 'success',
+    message: 'Mock payment successful.',
+    onClose: () =>
+      router.push({
+        name: 'customer.bookings',
+        query: { refresh: String(Date.now()) }
+      })
+  })
+  paymentBusy.value = false
+}
+
+async function cancelPaymentAndCloseModal() {
+  if (!paymentContext.value.paymentIntentId) {
+    paymentError.value = 'Missing payment intent id for cancellation'
+    return
+  }
+  paymentBusy.value = true
+  paymentError.value = ''
+  try {
+    await api.cancelUnpaidPayment(paymentContext.value.paymentIntentId)
+  } catch (e) {
+    paymentError.value = e?.message || 'Failed to cancel payment'
+    paymentBusy.value = false
+    return
+  }
+  paymentModalOpen.value = false
+  showAlertModal({ type: 'success', message: 'Payment cancelled.' })
+  paymentBusy.value = false
 }
 
 function nextSevenDates() {
@@ -151,18 +325,13 @@ async function submitBooking() {
         onClose: () => router.push({ name: 'customer.bookingDetail', params: { id: props.bookingId } })
       })
     } else {
-      await api.createBooking({
-        specialistId: props.id,
-        slotId: selectedSlotId.value,
-        note: note.value.trim() || undefined
-      })
-      note.value = ''
+      const selectedSlot = resolveSelectedSlot()
+      const draftNote = note.value.trim()
+      const paymentIntentId = (globalThis.crypto?.randomUUID?.() ?? `pi_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
       selectedSlotId.value = ''
-      showAlertModal({
-        type: 'success',
-        message: 'Booking request submitted successfully.',
-        onClose: () => router.push({ name: 'customer.bookings' })
-      })
+      await loadSlots()
+      await openPaymentModal(paymentIntentId, selectedSlot, draftNote)
+      return
     }
     await loadSlots()
   } catch (e) {
@@ -182,6 +351,15 @@ watch(
 )
 
 watch(slotDate, () => loadSlots())
+
+watch(
+  () => props.date,
+  (next) => {
+    if (next && next !== slotDate.value) {
+      slotDate.value = next
+    }
+  }
+)
 
 defineExpose({
   selectedSlotId,
@@ -278,10 +456,104 @@ defineExpose({
         </button>
       </div>
     </template>
+
+    <div v-if="paymentModalOpen" class="payment-modal-backdrop" @click.self="closePaymentModal">
+      <section class="payment-modal-card" role="dialog" aria-modal="true" aria-label="Booking Payment">
+        <header class="payment-modal-head">
+          <h3 class="payment-modal-title">Complete Payment</h3>
+          <button type="button" class="btn-secondary" :disabled="paymentBusy" @click="closePaymentModal">
+            Pay Later
+          </button>
+        </header>
+
+        <div class="payment-modal-body">
+          <p class="payment-tip">Payment Intent ID: {{ paymentContext.paymentIntentId || '--' }}</p>
+          <p class="payment-tip">Slot: {{ paymentContext.slotLabel }}</p>
+          <p class="payment-amount">Amount: {{ paymentContext.amount.toFixed(2) }} {{ paymentContext.currency }}</p>
+
+          <div class="payment-qr-wrap">
+            <img v-if="paymentContext.qrCodeUrl" class="payment-qr" :src="paymentContext.qrCodeUrl" alt="Payment QR Code" />
+            <div v-else class="payment-qr-empty">QR code unavailable</div>
+          </div>
+
+          <p v-if="paymentError" class="banner banner--error payment-banner">{{ paymentError }}</p>
+        </div>
+
+        <footer class="payment-modal-foot">
+          <div class="payment-qr-tip-wrap">
+            <span class="payment-qr-icon">!</span>
+            <div class="payment-qr-tooltip">
+              Please use Mock Payment!<br>
+              Only support QR code payment on the Android sandbox version of Alipay!<br>
+              Test Account: ruaalx2721@sandbox.com<br>
+              Password: 111111
+            </div>
+          </div>
+          <button type="button" class="btn-secondary" :disabled="paymentBusy" @click="cancelPaymentAndCloseModal">
+            Cancel
+          </button>
+          <button type="button" class="btn-secondary" :disabled="paymentBusy" @click="mockPaymentAndGoBookings">
+            Mock Payment
+          </button>
+          <button type="button" class="btn-submit" :disabled="paymentBusy" @click="confirmPaymentAndGoBookings">
+            {{ paymentBusy ? 'Confirming...' : 'Paid' }}
+          </button>
+        </footer>
+      </section>
+    </div>
   </section>
 </template>
 
 <style scoped>
+.payment-qr-tip-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+  margin-top: 12px;
+}
+
+/* 感叹号 */
+.payment-qr-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #faad14;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+}
+
+/* tooltip 本体 */
+.payment-qr-tooltip {
+  position: absolute;
+  bottom: 130%; /* 在上方 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+
+  padding: 8px 10px;
+  border-radius: 6px;
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* hover 显示 */
+.payment-qr-tip-wrap:hover .payment-qr-tooltip {
+  opacity: 1;
+}
 .page__header {
   margin: 8px 0 20px;
   padding: 0;
@@ -519,17 +791,17 @@ defineExpose({
 }
 
 .btn-submit {
-  margin-top: 6px;
-  width: 100%;
-  max-width: 260px;
-  height: 44px;
-  border: 1px solid #D9533C;
+  margin-top: 16px;
+  height: 40px;
+  padding: 0 14px;
   border-radius: 0;
-  background: #D9533C;
+  border: 1px solid #a94442;
+  background: #a94442;
   color: #ffffff;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .btn-submit:hover:not(:disabled) {
@@ -541,9 +813,137 @@ defineExpose({
   cursor: not-allowed;
 }
 
+.btn-secondary {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 0;
+  border: 1px solid #202124;
+  background: #ffffff;
+  color: #202124;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.payment-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(17, 24, 39, 0.42);
+}
+
+.payment-modal-card {
+  width: min(100%, 460px);
+  background: #ffffff;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 0;
+  box-shadow: 0 16px 36px rgba(17, 24, 39, 0.16);
+}
+
+.payment-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eceff3;
+}
+
+.payment-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.payment-modal-close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d8d1cb;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.payment-modal-body {
+  padding: 14px 16px;
+}
+
+.payment-tip {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.payment-amount {
+  margin: 8px 0 12px;
+  font-size: 15px;
+  color: #111827;
+  font-weight: 700;
+}
+
+.payment-qr-wrap {
+  width: 280px;
+  height: 280px;
+  margin: 0 auto;
+  border: 1px solid #d8d1cb;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+}
+
+.payment-qr {
+  width: 260px;
+  height: 260px;
+  object-fit: contain;
+}
+
+.payment-qr-empty {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.payment-banner {
+  margin-top: 12px;
+}
+
+.payment-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 16px;
+}
+
+.payment-modal-foot .btn-submit {
+  margin-top: 0;
+}
+
 @media (max-width: 720px) {
   .preview-row {
     grid-template-columns: 1fr;
+  }
+
+  .payment-qr-wrap {
+    width: 240px;
+    height: 240px;
+  }
+
+  .payment-qr {
+    width: 220px;
+    height: 220px;
   }
 }
 </style>

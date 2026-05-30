@@ -15,6 +15,9 @@ const editOpen = ref(false)
 const editLoading = ref(false)
 const editSaving = ref(false)
 const editingSlotId = ref('')
+const pricingRules = ref([])
+const pricingRulesLoading = ref(false)
+const pricingRulesError = ref('')
 const DETAIL_MAX = 300
 
 const editForm = ref({
@@ -37,6 +40,9 @@ const formattedSlots = computed(() => {
     formattedType: formatType(slot.type)
   }))
 })
+
+const pricingRulesPreview = computed(() => pricingRules.value.slice(0, 4))
+const extraPricingRulesCount = computed(() => Math.max(0, pricingRules.value.length - pricingRulesPreview.value.length))
 
 function formatDate(dateStr) {
   if (!dateStr) return '--'
@@ -112,6 +118,20 @@ async function loadSlots() {
     showAlertModal({ type: 'error', message: error.value })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadPricingRules() {
+  pricingRulesLoading.value = true
+  pricingRulesError.value = ''
+  try {
+    const rows = await api.specialistListPricingRules()
+    pricingRules.value = Array.isArray(rows) ? rows : []
+  } catch (e) {
+    pricingRules.value = []
+    pricingRulesError.value = e?.message || 'Failed to load your pricing rules.'
+  } finally {
+    pricingRulesLoading.value = false
   }
 }
 
@@ -198,7 +218,9 @@ function goToCreate() {
   router.push({ name: 'specialist.slotCreate' })
 }
 
-onMounted(loadSlots)
+onMounted(async () => {
+  await Promise.all([loadSlots(), loadPricingRules()])
+})
 </script>
 
 <template>
@@ -219,7 +241,7 @@ onMounted(loadSlots)
       <div v-if="error" class="banner banner--error">{{ error }}</div>
       <div v-if="success" class="banner banner--success">{{ success }}</div>
 
-      <!-- ✅ 第一份代码风格 -->
+
       <div class="table-wrap">
         <table class="table">
           <thead>
@@ -381,6 +403,28 @@ onMounted(loadSlots)
           </label>
 
           <div class="form-actions">
+            <div class="tip-wrap">
+              <span class="icon">!</span>
+              <div class="tooltip">
+                <template v-if="pricingRulesLoading">
+                  Loading your pricing rules...
+                </template>
+                <template v-else-if="pricingRules.length">
+                  <div class="tooltip-title"> Please follow your recommended Price!<br>
+                    Otherwise you will be punished!
+                  </div>
+                  <div v-for="rule in pricingRulesPreview" :key="rule.id" class="tooltip-rule">
+                    {{ rule.duration }} min {{ rule.type }}: {{ formatCurrency(rule.amount, rule.currency) }}
+                  </div>
+                  <div v-if="extraPricingRulesCount" class="tooltip-more">
+                    +{{ extraPricingRulesCount }} more rules
+                  </div>
+                </template>
+                <template v-else>
+                  {{ pricingRulesError || 'No pricing rules found.' }}
+                </template>
+              </div>
+            </div>
             <button type="button" class="action-btn modal-cancel" :disabled="editSaving" @click="closeEditModal">Cancel</button>
             <button type="button" class="btn-primary modal-save" :disabled="editSaving" @click="saveEditSlot">
               {{ editSaving ? 'Saving...' : 'Update Slot' }}
@@ -393,6 +437,69 @@ onMounted(loadSlots)
 </template>
 
 <style scoped>
+.tip-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+  margin-top: 12px;
+}
+
+/* 感叹号 */
+.icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #faad14;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+}
+
+/* tooltip 本体 */
+.tooltip {
+  position: absolute;
+  bottom: 130%; /* 在上方 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+
+  padding: 8px 10px;
+  border-radius: 6px;
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* hover 显示 */
+.tooltip-title {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.tooltip-rule,
+.tooltip-more {
+  color: #e5e7eb;
+}
+
+.tooltip-more {
+  margin-top: 4px;
+}
+
+.tip-wrap:hover .tooltip {
+  opacity: 1;
+}
 .page__header {
   margin: 8px 0 20px;
   padding: 0;
@@ -421,7 +528,7 @@ onMounted(loadSlots)
   box-shadow: 0 8px 18px rgba(17, 24, 39, 0.06);
 }
 
-/* ✅ 你的按钮风格（最终版） */
+
 .btn-neutral {
   height: 44px;
   padding: 0 14px;
@@ -437,7 +544,7 @@ onMounted(loadSlots)
   opacity: 0.92;
 }
 
-/* ✅ 表格风格（第一份代码） */
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid #eceff3;
@@ -470,7 +577,6 @@ onMounted(loadSlots)
   white-space: nowrap;
 }
 
-/* ✅ 状态 */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -489,7 +595,7 @@ onMounted(loadSlots)
   color: #991b1b;
 }
 
-/* ✅ 操作按钮 */
+
 .row-actions {
   display: flex;
   gap: 8px;

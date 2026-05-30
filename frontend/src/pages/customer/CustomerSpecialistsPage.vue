@@ -8,6 +8,8 @@ const expertiseList = ref([])
 const page = ref({ items: [], total: 0, page: 1, pageSize: 10 })
 const expertiseId = ref('')
 const keyword = ref('')
+const maxPrice = ref('')
+const availableDate = ref('')
 const query = ref({ page: 1, pageSize: 10 })
 const loading = ref(false)
 const error = ref('')
@@ -30,12 +32,12 @@ const expertiseMap = computed(() => {
 
 const filteredItems = computed(() => {
   const q = keyword.value.trim().toLowerCase()
-  const items = page.value.items ?? []
+  const items = (page.value.items ?? []).filter((s) => String(s?.status ?? '').toLowerCase() !== 'inactive')
   if (!q) return items
   return items.filter((s) => {
     const name = (s.name ?? '').toLowerCase()
-    const ids = (s.expertiseIds ?? []).join(' ').toLowerCase()
-    return name.includes(q) || ids.includes(q)
+    const expertiseNames = (s.expertiseNames ?? []).join(' ').toLowerCase()
+    return name.includes(q) || expertiseNames.includes(q)
   })
 })
 
@@ -65,9 +67,16 @@ async function loadSpecialists() {
   try {
     const params = {
       page: query.value.page,
-      pageSize: query.value.pageSize
+      pageSize: query.value.pageSize,
+      activeOnly: true
     }
     if (expertiseId.value) params.expertiseId = expertiseId.value
+    if (keyword.value.trim()) params.keyword = keyword.value.trim()
+    if (availableDate.value) params.date = availableDate.value
+    const numericMaxPrice = Number(maxPrice.value)
+    if (maxPrice.value !== '' && Number.isFinite(numericMaxPrice) && numericMaxPrice >= 0) {
+      params.maxPrice = numericMaxPrice
+    }
     page.value = await api.listSpecialists(params)
   } catch (e) {
     error.value = e?.message || 'Failed to load'
@@ -101,6 +110,15 @@ function onPageSizeChange() {
   loadSpecialists()
 }
 
+function clearAllFilters() {
+  expertiseId.value = ''
+  keyword.value = ''
+  maxPrice.value = ''
+  availableDate.value = ''
+  query.value.page = 1
+  loadSpecialists()
+}
+
 async function openDetail(id) {
   if (!id) return
   detailOpen.value = true
@@ -127,7 +145,11 @@ function goToBookingFromDetail() {
   const id = detailSpecialist.value?.id
   if (!id) return
   closeDetail()
-  router.push({ name: 'customer.specialistSlots', params: { id } })
+  router.push({
+    name: 'customer.specialistSlots',
+    params: { id },
+    query: availableDate.value ? { date: availableDate.value } : undefined
+  })
 }
 onMounted(async () => {
   await loadExpertise()
@@ -140,6 +162,15 @@ watch(expertiseId, () => {
 })
 watch(keyword, () => {
   query.value.page = 1
+  loadSpecialists()
+})
+watch(maxPrice, () => {
+  query.value.page = 1
+  loadSpecialists()
+})
+watch(availableDate, () => {
+  query.value.page = 1
+  loadSpecialists()
 })
 </script>
 
@@ -167,10 +198,30 @@ watch(keyword, () => {
           class="input"
           type="text"
           maxlength="100"
-          placeholder="Name or expertise ID..."
+          placeholder="Name or expertise..."
+        />
+      </label>
+      <label class="field">
+        <div class="label">Max Reference Price</div>
+        <input
+          v-model="maxPrice"
+          class="input"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="e.g. 100"
+        />
+      </label>
+      <label class="field">
+        <div class="label">Available Date</div>
+        <input
+          v-model="availableDate"
+          class="input"
+          type="date"
         />
       </label>
       <button type="button" class="btn" :disabled="loading" @click="loadSpecialists">Refresh</button>
+      <button type="button" class="btn btn--ghost" :disabled="loading" @click="clearAllFilters">Clear All Filters</button>
     </div>
 
     <div v-if="error" class="banner banner--error" role="alert">{{ error }}</div>
@@ -289,7 +340,7 @@ watch(keyword, () => {
 .panel {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
   gap: 12px;
   align-items: end;
   padding: 16px;
@@ -327,15 +378,16 @@ select.input {
   cursor: pointer;
 }
 .btn {
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 14px;
   border-radius: 0;
-  border: 1px solid #D9533C;
-  background: #D9533C;
+  border: 1px solid #a94442;
+  background: #a94442;
   color: #ffffff;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  height: 44px;
-  transition: opacity 0.18s ease;
+  white-space: nowrap;
 }
 
 .btn:hover:not(:disabled) {
@@ -454,22 +506,16 @@ select.input {
   font-family: ui-monospace, monospace;
 }
 .link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  width: 170px;
   height: 40px;
-  padding: 0 12px;
+  padding: 0 14px;
   border-radius: 0;
-  border: 1px solid #D9533C;
-  background: #D9533C;
+  border: 1px solid #a94442;
+  background: #a94442;
   color: #ffffff;
+  font-size: 13px;
   font-weight: 700;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: opacity 0.18s ease;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .link:hover {
@@ -622,5 +668,3 @@ select.input {
   }
 }
 </style>
-
-

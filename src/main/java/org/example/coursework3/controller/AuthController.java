@@ -32,15 +32,15 @@ public class AuthController {
        LoginResult loginResult = new LoginResult();
        loginResult.setUser(user);
        authService.storeToken(loginResult);
-       log.info("密码登录成功！已返回并存储相应token!");
+       log.info("Password login successful! The corresponding token has been returned and stored.");
        return Result.success(loginResult);
 
     }
     @PostMapping("/send-email-code")
     public Result<Void> sendCaptcha(@Valid @RequestBody CaptchaRequest request) throws Exception {
         mailService.sendCaptcha(request.getEmail());
-        log.info("向{}发送验证码",request.getEmail());
-        return Result.success("验证码已发送");
+        log.info("Send verification code to {}",request.getEmail());
+        return Result.success("Verification code sent.");
     }
 
     @PostMapping("/register")
@@ -49,7 +49,7 @@ public class AuthController {
         RegisterResult registerResult = new RegisterResult();
         registerResult.setUser(user);
         authService.storeToken(registerResult);
-        log.info("注册成功！已返回并存储相应token");
+        log.info("Registration successful! The corresponding token has been returned and stored.");
         return Result.success(registerResult);
     }
 
@@ -57,8 +57,8 @@ public class AuthController {
     public Result<Void> logout(@RequestHeader("Authorization") String authHeader){
         String token = authHeader.replace("Bearer ", "");
         authService.deleteToken(token);
-        log.info("已登出！并删除相应token");
-        return Result.success("已登出");
+        log.info("Logged out! Corresponding token has been deleted.");
+        return Result.success("Logged out");
     }
 
     @PostMapping("/login-by-email-code")
@@ -67,7 +67,7 @@ public class AuthController {
         LoginResult loginResult = new LoginResult();
         loginResult.setUser(user);
         authService.storeToken(loginResult);
-        log.info("验证码登录成功！已返回并存储相应token!");
+        log.info("Verification code login successful! The corresponding token has been returned and stored.");
         return Result.success(loginResult);
     }
 
