@@ -4,22 +4,22 @@ import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
 import org.example.coursework3.entity.Booking;
-import org.example.coursework3.service.BookingService;
+import org.example.coursework3.service.SpecialistBookingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 
 @Aspect
 @Slf4j
 @Configuration
-public class BookingMigrationAspect {
+public class BookingAspect {
 
     @Autowired
-    private BookingService bookingService;
+    private SpecialistBookingService bookingService;
 
-    // 获取刚刚保存成功的 Booking 对象 / list<Booking> auto-completed, rejected
+    // Acquire Booking Object / list<Booking> auto-completed, rejected
     @AfterReturning(
             pointcut = "execution(* org.example.coursework3.repository.BookingRepository.save*(..))",
-            returning = "savedBooking"  // 拿到保存后的对象
+            returning = "savedBooking"
     )
     public void afterBookingSave(Object savedBooking) {
         try {
@@ -34,7 +34,7 @@ public class BookingMigrationAspect {
                 }
             }
         } catch (Exception e) {
-            log.warn("状态历史记录失败: {}", e.getMessage());
+            log.warn("Fail to record history operation: {}", e.getMessage());
         }
     }
 }

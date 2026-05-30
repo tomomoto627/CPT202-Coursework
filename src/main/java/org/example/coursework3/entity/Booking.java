@@ -2,8 +2,11 @@ package org.example.coursework3.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import org.example.coursework3.repository.SlotRepository;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.UuidGenerator;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.LocalDateTime;
 
@@ -12,6 +15,8 @@ import java.time.LocalDateTime;
 @Data
 public class Booking {
     @Id
+    @GeneratedValue
+    @UuidGenerator
     @Column(length = 36)
     private String id;
 
@@ -47,8 +52,16 @@ public class Booking {
         this.updatedAt = now;
     }
 
+    private String time;
+
+    private String customerName;
+
+    private String specialistName;
+
     @PreUpdate
     public void preUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
+
+
 }

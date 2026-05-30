@@ -16,15 +16,15 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
+
 @Slf4j
 @Service
 public class AutoStatusUpdateService {
 
-    private static final long PENDING_EXPIRY_HOURS = 24;
-    private static final long CANCEL_BEFORE_START_MINUTES = 30;
+    private static final long CANCEL_BEFORE_START_MINUTES = 10;
     private static final long COMPLETE_AFTER_END_HOURS = 2;
-
-    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai"); // 或 Asia/Shanghai
+    //Set standard timezone
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
 
     @Autowired
     private BookingRepository bookingRepository;
@@ -32,43 +32,46 @@ public class AutoStatusUpdateService {
     @Autowired
     private SlotRepository slotRepository;
 
+    /**
+     * Scheduled task to auto-cancel 'Pending' bookings that have not been confirmed by the specialist.
+     * Runs every 5 minutes.
+     * Logic: If the current time is within 10 minutes of the slot's start time, the
+     * booking is marked as 'Cancelled' to prevent last-minute scheduling uncertainty.
+     */
     @Scheduled(fixedRate = 300000)
     @Transactional
-    public void autoCancelPendingBookings() {
+    public void cancelUnconfirmedBeforeStart() {
         LocalDateTime now = LocalDateTime.now(APP_ZONE);
-        LocalDateTime threshold = now.minusHours(PENDING_EXPIRY_HOURS);
 
-        List<Booking> allPending = bookingRepository
-                .findByStatusAndCreatedAtBefore(BookingStatus.Pending, threshold);
+        // Get all bookings currently in 'Pending' status
+        List<Booking> pending = bookingRepository
+                .findByStatus(BookingStatus.Pending);
 
-        List<Booking> toCancel = new ArrayList<>();
-
-        for (Booking booking : allPending) {
+        for (Booking booking : pending) {
             Slot slot = slotRepository.findById(booking.getSlotId()).orElse(null);
-            if (slot == null) {
-                log.warn("Slot not found for booking id={}", booking.getId());
-                continue;
-            }
-
+            if (slot == null) continue;
+            //Cancel booking that current time is less than 10 minutes before start time
             if (slot.getStartTime().isBefore(now.plusMinutes(CANCEL_BEFORE_START_MINUTES))) {
                 booking.setStatus(BookingStatus.Cancelled);
-                toCancel.add(booking);
+                bookingRepository.save(booking);
                 log.info("Auto-cancelled booking id={}", booking.getId());
             }
         }
-
-        if (!toCancel.isEmpty()) {
-            bookingRepository.saveAll(toCancel);
-            log.info("Total auto-cancelled bookings: {}", toCancel.size());
-        }
     }
-
+    /**
+     * Scheduled task to auto-complete 'Confirmed' bookings that have already finished.
+     * Runs every 5 minutes.
+     * Logic: If the current time is more than 2 hours past the slot's end time,
+     * the booking is marked as 'Completed'.
+     */
     @Scheduled(fixedRate = 300000)
     @Transactional
     public void autoCompleteConfirmedBookings() {
         LocalDateTime now = LocalDateTime.now(APP_ZONE);
 
+        // Get all bookings currently in 'Confirmed' status
         List<Booking> allConfirmed = bookingRepository.findByStatus(BookingStatus.Confirmed);
+        // A list to store the data to be changed
         List<Booking> toComplete = new ArrayList<>();
 
         for (Booking booking : allConfirmed) {
@@ -77,14 +80,14 @@ public class AutoStatusUpdateService {
                 log.warn("Slot not found for booking id={}", booking.getId());
                 continue;
             }
-
+            // If the current time is more than 2 hours past the slot's end time, change to completed
             if (now.isAfter(slot.getEndTime().plusHours(COMPLETE_AFTER_END_HOURS))) {
                 booking.setStatus(BookingStatus.Completed);
                 toComplete.add(booking);
                 log.info("Auto-completed booking id={}", booking.getId());
             }
         }
-
+        // save all changes
         if (!toComplete.isEmpty()) {
             bookingRepository.saveAll(toComplete);
             log.info("Total auto-completed bookings: {}", toComplete.size());

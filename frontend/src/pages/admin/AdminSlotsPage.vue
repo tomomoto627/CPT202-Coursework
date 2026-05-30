@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { showAlertModal } from '@/ui/alertModal'
 
+const router = useRouter()
 const today = new Date().toISOString().slice(0, 10)
 
 const specialists = ref([])
@@ -14,7 +16,6 @@ const searchedOnce = ref(false)
 const slotSearchQuery = ref('')
 
 const searchLoading = ref(false)
-const createLoading = ref(false)
 const updateLoading = ref(false)
 const deletingId = ref('')
 
@@ -29,14 +30,6 @@ const searchForm = ref({
   available: ''
 })
 
-const createForm = ref({
-  specialistId: '',
-  date: today,
-  start: '09:00',
-  end: '09:30',
-  available: true
-})
-
 const editOpen = ref(false)
 const editForm = ref({
   id: '',
@@ -44,7 +37,11 @@ const editForm = ref({
   date: '',
   start: '',
   end: '',
-  available: true
+  available: true,
+  amount: '0.00',
+  currency: 'CNY',
+  type: 'online',
+  detail: ''
 })
 
 const specialistMap = computed(() => {
@@ -116,6 +113,84 @@ function slotAvailable(row) {
 
 function formatAvailabilityLabel(value) {
   return value ? 'Available' : 'Unavailable'
+}
+
+function slotAmount(row) {
+  const amount = row?.amount
+  if (amount === null || amount === undefined || amount === '') return '0.00'
+  const num = Number(amount)
+  if (Number.isNaN(num)) return String(amount)
+  return num.toFixed(2)
+}
+
+function slotCurrency(row) {
+  return String(row?.currency ?? 'CNY').trim() || 'CNY'
+}
+
+function slotDuration(row) {
+  const duration = Number(row?.duration)
+  if (Number.isNaN(duration) || duration <= 0) return '--'
+  return `${duration} min`
+}
+
+function slotType(row) {
+  return String(row?.type ?? 'online').trim() || 'online'
+}
+
+function slotDetail(row) {
+  return String(row?.detail ?? '').trim() || '--'
+}
+
+function slotSchedule(row) {
+  const date = slotDate(row)
+  const start = slotStart(row)
+  const end = slotEnd(row)
+  if (date === '--') return '--'
+  return `${date} ${start}-${end}`
+}
+
+function slotSession(row) {
+  const duration = slotDuration(row)
+  const type = slotType(row)
+  if (duration === '--') return type
+  return `${duration} · ${type}`
+}
+
+function calcDurationMinutes(startValue, endValue) {
+  const start = String(startValue ?? '').trim()
+  const end = String(endValue ?? '').trim()
+  if (!start || !end) return 0
+  const [startHour, startMin] = start.split(':').map(Number)
+  const [endHour, endMin] = end.split(':').map(Number)
+  if ([startHour, startMin, endHour, endMin].some(Number.isNaN)) return 0
+  const startTotal = startHour * 60 + startMin
+  const endTotal = endHour * 60 + endMin
+  const diff = endTotal - startTotal
+  return diff > 0 ? diff : 0
+}
+
+const editDurationMinutes = computed(() =>
+  calcDurationMinutes(editForm.value.start, editForm.value.end)
+)
+
+function normalizeAmountInput(value) {
+  if (value === null || value === undefined || value === '') return 0
+  const num = Number(value)
+  return Number.isNaN(num) ? 0 : num
+}
+
+function buildSlotPayload(form) {
+  return {
+    date: form.date,
+    start: form.start,
+    end: form.end,
+    available: form.available,
+    amount: normalizeAmountInput(form.amount),
+    currency: String(form.currency ?? '').trim() || 'CNY',
+    duration: calcDurationMinutes(form.start, form.end),
+    type: String(form.type ?? '').trim() || 'online',
+    detail: String(form.detail ?? '').trim()
+  }
 }
 
 function sortSlots(rows) {
@@ -205,16 +280,6 @@ function resetSearchForm() {
   }
 }
 
-function resetCreateForm() {
-  createForm.value = {
-    specialistId: createForm.value.specialistId,
-    date: createForm.value.date || today,
-    start: '09:00',
-    end: '09:30',
-    available: true
-  }
-}
-
 function openEdit(row) {
   editForm.value = {
     id: slotId(row),
@@ -222,7 +287,11 @@ function openEdit(row) {
     date: String(row?.date ?? '').trim(),
     start: String(row?.start ?? row?.startTime ?? '').trim(),
     end: String(row?.end ?? row?.endTime ?? '').trim(),
-    available: slotAvailable(row)
+    available: slotAvailable(row),
+    amount: slotAmount(row),
+    currency: slotCurrency(row),
+    type: slotType(row),
+    detail: String(row?.detail ?? '').trim()
   }
   editOpen.value = true
 }
@@ -236,54 +305,16 @@ function closeEdit() {
     date: '',
     start: '',
     end: '',
-    available: true
+    available: true,
+    amount: '0.00',
+    currency: 'CNY',
+    type: 'online',
+    detail: ''
   }
 }
 
 async function onSearch() {
   await loadSlots({ announceSuccess: true })
-}
-
-async function onCreate() {
-  clearMessages()
-
-  if (!createForm.value.specialistId) {
-    error.value = 'Please select a specialist for the new slot.'
-    showAlertModal({ type: 'error', message: error.value })
-    return
-  }
-  if (!createForm.value.date || !createForm.value.start || !createForm.value.end) {
-    error.value = 'Please complete date, start time, and end time.'
-    showAlertModal({ type: 'error', message: error.value })
-    return
-  }
-  if (!isValidTimeRange(createForm.value.start, createForm.value.end)) {
-    error.value = 'Create slot start time must be earlier than end time.'
-    showAlertModal({ type: 'error', message: error.value })
-    return
-  }
-
-  createLoading.value = true
-  try {
-    const created = await api.adminCreateSlot({
-      specialistId: createForm.value.specialistId,
-      date: createForm.value.date,
-      start: createForm.value.start,
-      end: createForm.value.end,
-      available: createForm.value.available
-    })
-    resetCreateForm()
-    await loadSlots({ preserveMessages: true })
-    if (!error.value) {
-      success.value = `Slot ${slotId(created) || 'created'} created successfully.`
-      showAlertModal({ type: 'success', message: success.value })
-    }
-  } catch (e) {
-    error.value = e?.message || 'Failed to create slot'
-    showAlertModal({ type: 'error', message: error.value })
-  } finally {
-    createLoading.value = false
-  }
 }
 
 async function onUpdate() {
@@ -304,14 +335,16 @@ async function onUpdate() {
     showAlertModal({ type: 'error', message: error.value })
     return
   }
+  if (editDurationMinutes.value <= 0) {
+    error.value = 'Please enter a valid duration in minutes.'
+    showAlertModal({ type: 'error', message: error.value })
+    return
+  }
 
   updateLoading.value = true
   try {
     await api.adminUpdateSlot(editForm.value.id, {
-      date: editForm.value.date,
-      start: editForm.value.start,
-      end: editForm.value.end,
-      available: editForm.value.available
+      ...buildSlotPayload(editForm.value)
     })
     await loadSlots({ preserveMessages: true })
     if (!error.value) {
@@ -365,7 +398,7 @@ onMounted(async () => {
     <header class="page__header">
       <h1>Slot Management</h1>
       <p class="subtitle">
-        Manage specialist availability by creating, updating, and reviewing consultation slots.
+        Manage specialist availability by searching, reviewing, and updating consultation slots.
       </p>
     </header>
 
@@ -443,65 +476,6 @@ onMounted(async () => {
           </button>
         </div>
       </section>
-
-      <section class="calc-card">
-        <div class="panel-head">
-          <h2 class="card-title">Create Slot</h2>
-        </div>
-
-        <label class="field">
-          <span class="label">Specialist</span>
-          <select v-model="createForm.specialistId" class="input input--select" :disabled="specialistsLoading || createLoading">
-            <option value="">Select a specialist</option>
-            <option v-for="row in specialists" :key="row.id" :value="row.id">
-              {{ row.name || row.id }} ({{ row.id }})
-            </option>
-          </select>
-        </label>
-
-        <div class="field-grid field-grid--two">
-          <label class="field">
-            <span class="label">Date</span>
-            <input v-model="createForm.date" type="date" class="input" />
-          </label>
-          <div class="field">
-            <span class="label">Availability</span>
-            <div class="option-row">
-              <button
-                type="button"
-                class="option-btn option-btn--type"
-                :class="{ 'option-btn--active': createForm.available === true }"
-                @click="createForm.available = true"
-              >
-                Available
-              </button>
-              <button
-                type="button"
-                class="option-btn option-btn--type"
-                :class="{ 'option-btn--active': createForm.available === false }"
-                @click="createForm.available = false"
-              >
-                Unavailable
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="field-grid field-grid--two">
-          <label class="field">
-            <span class="label">Start Time</span>
-            <input v-model="createForm.start" type="time" class="input" />
-          </label>
-          <label class="field">
-            <span class="label">End Time</span>
-            <input v-model="createForm.end" type="time" class="input" />
-          </label>
-        </div>
-
-        <button type="button" class="btn-primary btn-primary--fit" :disabled="createLoading" @click="onCreate">
-          {{ createLoading ? 'Creating...' : 'Create Slot' }}
-        </button>
-      </section>
     </div>
 
     <section class="calc-card list-card">
@@ -513,6 +487,9 @@ onMounted(async () => {
           </p>
         </div>
         <div class="toolbar-actions">
+          <button type="button" class="btn-neutral btn-create-nav" @click="router.push({ name: 'admin.slotCreate' })">
+            Go to Create Slot
+          </button>
           <input
             v-model.trim="slotSearchQuery"
             class="input search-input"
@@ -544,22 +521,22 @@ onMounted(async () => {
         <table class="table">
           <thead>
             <tr>
-              <th scope="col" class="th-id">Slot ID</th>
               <th scope="col">Specialist</th>
-              <th scope="col">Date</th>
-              <th scope="col">Start</th>
-              <th scope="col">End</th>
+              <th scope="col">Schedule</th>
+              <th scope="col">Price</th>
+              <th scope="col">Session</th>
+              <th scope="col">Detail</th>
               <th scope="col">Availability</th>
               <th scope="col" class="th-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="row in filteredSlots" :key="slotId(row)">
-              <td class="mono weak">{{ slotId(row) || '--' }}</td>
               <td class="cell--wrap">{{ formatSpecialistLabel(slotSpecialistId(row)) }}</td>
-              <td>{{ slotDate(row) }}</td>
-              <td>{{ slotStart(row) }}</td>
-              <td>{{ slotEnd(row) }}</td>
+              <td>{{ slotSchedule(row) }}</td>
+              <td>{{ slotAmount(row) }} {{ slotCurrency(row) }}</td>
+              <td>{{ slotSession(row) }}</td>
+              <td class="cell--detail" :title="slotDetail(row)">{{ slotDetail(row) }}</td>
               <td>
                 <span class="status-pill" :class="{ 'status-pill--off': !slotAvailable(row) }">
                   {{ formatAvailabilityLabel(slotAvailable(row)) }}
@@ -647,7 +624,40 @@ onMounted(async () => {
           </label>
         </div>
 
+        <div class="field-grid field-grid--two">
+          <label class="field">
+            <span class="label">Amount</span>
+            <input v-model="editForm.amount" type="number" min="0" step="0.01" class="input" />
+          </label>
+          <label class="field">
+            <span class="label">Currency</span>
+            <input v-model.trim="editForm.currency" type="text" maxlength="10" class="input" />
+          </label>
+        </div>
+
+        <div class="field-grid field-grid--two">
+          <label class="field">
+            <span class="label">Duration (minutes, auto)</span>
+            <input :value="editDurationMinutes" type="number" class="input" readonly />
+          </label>
+          <label class="field">
+            <span class="label">Type</span>
+            <input v-model.trim="editForm.type" type="text" maxlength="20" class="input" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="label">Detail</span>
+          <textarea v-model="editForm.detail" class="input input--textarea" rows="3" />
+        </label>
+
         <div class="modal-footer">
+          <div class="tip-wrap">
+            <span class="icon">!</span>
+            <div class="tooltip">
+              Please check and follow Specialist's Pricing Rules!<br>
+            </div>
+          </div>
           <button type="button" class="btn-neutral" :disabled="updateLoading" @click="closeEdit">
             Cancel
           </button>
@@ -661,6 +671,56 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.tip-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+  margin-top: 12px;
+}
+
+/* 感叹号 */
+.icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #faad14;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+}
+
+/* tooltip 本体 */
+.tooltip {
+  position: absolute;
+  bottom: 130%; /* 在上方 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+
+  padding: 8px 10px;
+  border-radius: 6px;
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* hover 显示 */
+.tip-wrap:hover .tooltip {
+  opacity: 1;
+}
+
 .page__header {
   margin: 8px 0 20px;
   padding: 0;
@@ -681,9 +741,14 @@ onMounted(async () => {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 18px;
   align-items: start;
+  max-width: 980px;
+}
+
+.btn-create-nav {
+  min-width: 200px;
 }
 
 .calc-card {
@@ -696,6 +761,7 @@ onMounted(async () => {
 
 .list-card {
   margin-top: 14px;
+  max-width: 1160px;
 }
 
 .panel-head {
@@ -744,6 +810,13 @@ onMounted(async () => {
   border-radius: 0;
   background: #f8f5f2;
   color: #111827;
+}
+
+.input--textarea {
+  min-height: 88px;
+  padding: 10px 12px;
+  resize: vertical;
+  font: inherit;
 }
 
 .input--select {
@@ -903,7 +976,7 @@ onMounted(async () => {
 }
 
 .search-input {
-  width: min(320px, 50vw);
+  width: min(280px, 44vw);
 }
 
 .btn-refresh {
@@ -920,6 +993,11 @@ onMounted(async () => {
   margin: 4px 0 0;
   font-size: 12px;
   color: #6b7280;
+}
+
+.btn-create-nav {
+  height: 40px;
+  min-width: 150px;
 }
 
 .meta-pill {
@@ -957,14 +1035,14 @@ onMounted(async () => {
 .table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 860px;
+  min-width: 980px;
 }
 
 .table th,
 .table td {
   padding: 12px 14px;
   border-bottom: 1px solid #eceff3;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   font-size: 13px;
   color: #111827;
@@ -983,16 +1061,20 @@ onMounted(async () => {
   border-bottom: 0;
 }
 
-.th-id {
-  min-width: 132px;
-}
-
 .th-actions {
   min-width: 150px;
 }
 
 .cell--wrap {
   min-width: 180px;
+}
+
+.cell--detail {
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 auto;
 }
 
 .mono {
@@ -1025,6 +1107,9 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: center;
+  width: 100%;
+  transform: translateX(10px);
 }
 
 .action-btn {

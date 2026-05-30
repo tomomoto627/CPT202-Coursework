@@ -1,94 +1,102 @@
 ﻿<script setup>
-import {onMounted, onUnmounted, ref, watch} from 'vue'
-import { useRouter } from 'vue-router'
-import { api } from '@/api/client'
-
+import { ref, watch } from "vue";
+import { useRouter } from "vue-router";
+import { api } from "@/api/client";
+import { showConfirmModal } from "@/ui/confirmModal.js";
 const props = defineProps({
-  id: { type: String, required: true }
-})
+  id: { type: String, required: true },
+});
 
-const router = useRouter()
-const booking = ref(null)
-const loading = ref(false)
-const error = ref('')
-const rejectReason = ref('')
-const busy = ref('')
+const router = useRouter();
+const booking = ref(null);
+const loading = ref(false);
+const error = ref("");
+const rejectReason = ref("");
+const busy = ref("");
+
+function formatPrice(row) {
+  const direct = row?.price;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const n = Number(row?.amount ?? 0);
+  const safe = Number.isNaN(n) ? 0 : n;
+  const c = String(row?.currency ?? "CNY").trim() || "CNY";
+  return `${safe.toFixed(2)} ${c}`;
+}
 
 async function load() {
-  error.value = ''
-  loading.value = true
-  booking.value = null
+  error.value = "";
+  loading.value = true;
+  booking.value = null;
   try {
-    booking.value = await api.getBooking(props.id)
+    booking.value = await api.specialistGetBooking(props.id);
   } catch (e) {
-    error.value = e?.message || 'Failed to load'
+    error.value = e?.message || "Failed to load";
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 watch(
   () => props.id,
   () => load(),
-  { immediate: true }
-)
+  { immediate: true },
+);
 
-async function run(action) {
-  busy.value = action
-  try {
-    if (action === 'confirm') booking.value = await api.confirmBooking(props.id)
-    else if (action === 'reject')
-      booking.value = await api.rejectBooking(props.id, {
-        reason: rejectReason.value.trim() || undefined
-      })
-    else if (action === 'complete') booking.value = await api.completeBooking(props.id)
-  } catch (e) {
-    error.value = e?.message || 'Operation failed'
-  } finally {
-    busy.value = ''
+function run(action) {
+  // 根据不同的动作，设置不同的提示文案
+  let title = "";
+  let message = "";
+
+  if (action === "confirm") {
+    title = "Confirm acceptance";
+    message = "Are you sure you want to accept this reservation?";
+  } else if (action === "reject") {
+    title = "Refuse Reservation";
+    message = "Are you sure you want to decline this reservation?";
+  } else if (action === "complete") {
+    title = "Complete Reservation";
+    message =
+      "Are you sure that this reservation service has been completed?  \n" +
+      "Once confirmed, the status will change to 'Completed'.";
   }
+
+  // 弹出提示框
+  showConfirmModal({
+    title: title,
+    message: message,
+    onConfirm: async () => {
+      busy.value = action;
+      try {
+        if (action === "confirm") {
+          await api.confirmBooking(props.id);
+        } else if (action === "reject") {
+          await api.rejectBooking(props.id, {
+            reason: rejectReason.value.trim() || undefined,
+          });
+          rejectReason.value = "";
+        } else if (action === "complete") {
+          await api.completeBooking(props.id);
+        }
+        await load();
+      } catch (e) {
+        error.value = e?.message || "Operation failed";
+      } finally {
+        busy.value = "";
+      }
+    },
+  });
 }
-
-// 1. 在顶层声明变量，不要在这里赋值
-let autoUpdateTimer = null
-
-async function handleAutoStatusUpdate() {
-  try {
-    const message = await api.triggerAutoStatusUpdate()
-    if (message) {
-      console.log(message)
-      await load()
-    }
-  } catch (e) {
-    console.error('Auto status update failed:', e?.message)
-  }
-}
-
-onMounted(() => {
-  // 立即执行一次
-  handleAutoStatusUpdate()
-
-  // 2. 赋值给顶层变量，去掉 const
-  autoUpdateTimer = setInterval(handleAutoStatusUpdate, 3600000)
-})
-
-onUnmounted(() => {
-  // 3. 现在这里可以正常访问到变量了
-  if (autoUpdateTimer) {
-    clearInterval(autoUpdateTimer)
-    autoUpdateTimer = null // 良好的习惯：清理引用
-  }
-})
 </script>
 
 <template>
   <section class="page">
     <header class="page__header">
       <h1>Booking Details (Specialist)</h1>
-      <p class="muted mono">bookingId: {{ id }}</p>
     </header>
 
-    <div v-if="error" class="banner banner--error" role="alert">{{ error }}</div>
+    <div v-if="error" class="banner banner--error" role="alert">
+      {{ error }}
+    </div>
     <div v-else-if="loading" class="card muted">Loading…</div>
 
     <template v-else-if="booking">
@@ -96,13 +104,19 @@ onUnmounted(() => {
         <div class="title">Booking Info</div>
         <dl class="kv">
           <dt>Status</dt>
-          <dd>{{ booking.status ?? '—' }}</dd>
+          <dd>{{ booking.status ?? "—" }}</dd>
           <dt>Time</dt>
-          <dd>{{ booking.time ?? booking.startTime ?? '—' }}</dd>
+          <dd>{{ booking.time ?? booking.startTime ?? "—" }}</dd>
           <dt>Customer</dt>
-          <dd>{{ booking.customerName ?? booking.customerId ?? '—' }}</dd>
-          <dt>Slot</dt>
-          <dd class="mono">{{ booking.slotId ?? '—' }}</dd>
+          <dd>{{ booking.customerName ?? booking.customerId ?? "—" }}</dd>
+          <dt>Duration</dt>
+          <dd>
+            {{ booking.duration ?? booking.slot ?? booking.slotId ?? "—" }}
+          </dd>
+          <dt>Price</dt>
+          <dd>{{ formatPrice(booking) }}</dd>
+          <dt>Note</dt>
+          <dd>{{ booking.note ?? "—" }}</dd>
         </dl>
       </div>
 
@@ -119,7 +133,7 @@ onUnmounted(() => {
             :disabled="!!busy"
             @click="run('confirm')"
           >
-            {{ busy === 'confirm' ? '…' : 'Confirm' }}
+            {{ busy === "confirm" ? "…" : "Confirm" }}
           </button>
           <button
             type="button"
@@ -127,16 +141,25 @@ onUnmounted(() => {
             :disabled="!!busy"
             @click="run('reject')"
           >
-            {{ busy === 'reject' ? '…' : 'Reject' }}
+            {{ busy === "reject" ? "…" : "Reject" }}
           </button>
-          <button type="button" class="btn" :disabled="!!busy" @click="run('complete')">
-            {{ busy === 'complete' ? '…' : 'Complete' }}
+          <button
+            type="button"
+            class="btn"
+            :disabled="!!busy"
+            @click="run('complete')"
+          >
+            {{ busy === "complete" ? "…" : "Complete" }}
           </button>
         </div>
       </div>
 
       <p class="muted small">
-        <button type="button" class="linkish" @click="router.push({ name: 'specialist.requests' })">
+        <button
+          type="button"
+          class="linkish btn-neutral"
+          @click="router.push({ name: 'specialist.requests' })"
+        >
           Back to Request List
         </button>
       </p>
@@ -145,12 +168,19 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.page__header {
+  margin: 8px 0 20px;
+  padding: 0;
+}
+
 .page__header h1 {
-  margin: 0 0 6px;
-  font-size: 22px;
+  margin: 0;
+  font-size: clamp(32px, 3.1vw, 38px);
+  font-weight: 800;
+  line-height: 1.12;
 }
 .muted {
-  opacity: 0.8;
+  color: #6b7280;
 }
 .small {
   font-size: 12px;
@@ -159,17 +189,6 @@ onUnmounted(() => {
 .mono {
   font-family: ui-monospace, monospace;
   font-size: 12px;
-}
-.card {
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-}
-.title {
-  font-weight: 700;
-  margin-bottom: 10px;
 }
 .kv {
   display: grid;
@@ -187,20 +206,33 @@ onUnmounted(() => {
 }
 .field {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 12px;
   max-width: 400px;
 }
 .label {
   font-size: 13px;
-  opacity: 0.85;
+  color: #4b5563;
+  font-weight: 600;
+}
+.input,
+.btn {
+  height: 44px;
+  box-sizing: border-box;
 }
 .input {
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: #ffffff;
+  min-width: 160px;
+  padding: 0 12px;
+  border-radius: 0;
+  border: 1px solid #d8d1cb;
+  background: #f8f5f2;
   color: #111827;
+}
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  line-height: normal;
 }
 .btns {
   display: flex;
@@ -208,23 +240,31 @@ onUnmounted(() => {
   gap: 8px;
 }
 .btn {
-  padding: 10px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.1);
-  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border-radius: 0;
+  border: 1px solid #a94442;
+  background: #a94442;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 .btn--ok {
-  border-color: rgba(52, 211, 153, 0.45);
-  background: rgba(52, 211, 153, 0.12);
+  border-color: #202124;
+  background: #ffffff;
+  color: #202124;
 }
 .btn--danger {
-  border-color: rgba(248, 113, 113, 0.45);
-  background: rgba(248, 113, 113, 0.12);
+  border-color: #a94442;
+  background: #ffffff;
+  color: #a94442;
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
 }
 .banner {
   margin-top: 14px;
@@ -238,12 +278,18 @@ onUnmounted(() => {
   color: #991b1b;
 }
 .linkish {
-  background: none;
-  border: none;
-  padding: 0;
-  color: inherit;
-  text-decoration: underline;
+  padding: 0 14px;
+  height: 40px;
+  text-decoration: none;
   cursor: pointer;
   font: inherit;
+}
+
+.btn-neutral {
+  border: 1px solid #202124;
+  border-radius: 0;
+  background: #ffffff;
+  color: #202124;
+  font-weight: 700;
 }
 </style>

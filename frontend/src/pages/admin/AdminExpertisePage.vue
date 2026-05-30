@@ -203,8 +203,8 @@ function openEdit(row) {
   editOpen.value = true
 }
 
-function closeEdit() {
-  if (updating.value) return
+function closeEdit(force = false) {
+  if (updating.value && !force) return
   editOpen.value = false
   editId.value = ''
   editName.value = ''
@@ -234,10 +234,9 @@ async function onUpdate() {
       name: editName.value.trim(),
       description: editDesc.value.trim() || undefined
     })
-    closeEdit()
     await load()
     success.value = 'Expertise updated successfully.'
-    showAlertModal({ type: 'success', message: success.value })
+    showAlertModal({ type: 'success', message: success.value, onClose: () => closeEdit(true) })
   } catch (e) {
     error.value = e?.message || 'Failed to update'
     showAlertModal({ type: 'error', message: error.value })

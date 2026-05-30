@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 import PublicLayout from '@/layouts/PublicLayout.vue'
@@ -20,12 +20,16 @@ import SpecialistDashboardPage from '@/pages/specialist/SpecialistDashboardPage.
 import SpecialistSchedulePage from '@/pages/specialist/SpecialistSchedulePage.vue'
 import SpecialistRequestsPage from '@/pages/specialist/SpecialistRequestsPage.vue'
 import SpecialistBookingDetailPage from '@/pages/specialist/SpecialistBookingDetailPage.vue'
+import SpecialistSlotsPage from '@/pages/specialist/SpecialistSlotsPage.vue'
+import SpecialistSlotCreatePage from '@/pages/specialist/SpecialistSlotCreatePage.vue'
 
 import AdminDashboardPage from '@/pages/admin/AdminDashboardPage.vue'
 import AdminSpecialistsPage from '@/pages/admin/AdminSpecialistsPage.vue'
 import AdminExpertisePage from '@/pages/admin/AdminExpertisePage.vue'
 import AdminSlotsPage from '@/pages/admin/AdminSlotsPage.vue'
+import AdminSlotCreatePage from '@/pages/admin/AdminSlotCreatePage.vue'
 import AdminPricingPage from '@/pages/admin/AdminPricingPage.vue'
+import AdminPricingRuleCreatePage from '@/pages/admin/AdminPricingRuleCreatePage.vue'
 import AdminBookingsPage from '@/pages/admin/AdminBookingsPage.vue'
 
 const ROLE = {
@@ -58,7 +62,16 @@ const routes = [
       { path: '', redirect: '/customer/specialists' },
       { path: 'specialists', name: 'customer.specialists', component: CustomerSpecialistsPage },
       { path: 'specialists/:id', name: 'customer.specialistDetail', component: CustomerSpecialistDetailPage, props: true },
-      { path: 'specialists/:id/slots', name: 'customer.specialistSlots', component: CustomerSpecialistSlotsPage, props: true },
+      {
+        path: 'specialists/:id/slots',
+        name: 'customer.specialistSlots',
+        component: CustomerSpecialistSlotsPage,
+        props: (route) => ({
+          id: route.params.id,
+          bookingId: route.query.bookingId || '',
+          date: route.query.date || ''
+        })
+      },
       { path: 'bookings', name: 'customer.bookings', component: CustomerBookingsPage },
       { path: 'bookings/:id', name: 'customer.bookingDetail', component: CustomerBookingDetailPage, props: true },
       { path: 'profile', name: 'customer.profile', component: CustomerProfilePage }
@@ -73,7 +86,10 @@ const routes = [
       { path: 'dashboard', name: 'specialist.dashboard', component: SpecialistDashboardPage },
       { path: 'schedule', name: 'specialist.schedule', component: SpecialistSchedulePage },
       { path: 'requests', name: 'specialist.requests', component: SpecialistRequestsPage },
-      { path: 'bookings/:id', name: 'specialist.bookingDetail', component: SpecialistBookingDetailPage, props: true }
+      { path: 'bookings/:id', name: 'specialist.bookingDetail', component: SpecialistBookingDetailPage, props: true },
+      { path: 'slots', name: 'specialist.slots', component: SpecialistSlotsPage },
+      { path: 'slots/create', name: 'specialist.slotCreate', component: SpecialistSlotCreatePage },
+      { path: 'slots/:id/edit', name: 'specialist.slotEdit', component: SpecialistSlotCreatePage, props: true }
     ]
   },
   {
@@ -86,7 +102,9 @@ const routes = [
       { path: 'specialists', name: 'admin.specialists', component: AdminSpecialistsPage },
       { path: 'expertise', name: 'admin.expertise', component: AdminExpertisePage },
       { path: 'slots', name: 'admin.slots', component: AdminSlotsPage },
+      { path: 'slots/create', name: 'admin.slotCreate', component: AdminSlotCreatePage },
       { path: 'pricing', name: 'admin.pricing', component: AdminPricingPage },
+      { path: 'pricing/create', name: 'admin.pricingCreate', component: AdminPricingRuleCreatePage },
       { path: 'bookings', name: 'admin.bookings', component: AdminBookingsPage }
     ]
   },
@@ -97,7 +115,7 @@ const routes = [
 ]
 
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes
 })
 

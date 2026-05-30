@@ -1,15 +1,21 @@
 package org.example.coursework3.controller;
 
+import org.example.coursework3.dto.request.SlotRequest;
 import org.example.coursework3.dto.response.BookingPageResult;
+import org.example.coursework3.dto.response.BookingActionResult;
 import org.example.coursework3.dto.request.RejectRequest;
-import org.example.coursework3.dto.response.CompleteResult;
-import org.example.coursework3.dto.response.ConfirmResult;
-
-import org.example.coursework3.dto.response.RejectResult;
 import org.example.coursework3.result.Result;
-import org.example.coursework3.service.BookingService;
+import org.example.coursework3.service.AdminService;
+import org.example.coursework3.service.AuthService;
+import org.example.coursework3.service.PricingService;
+import org.example.coursework3.service.SpecialistBookingService;
+import org.example.coursework3.vo.AdminSlotVo;
+import org.example.coursework3.vo.PricingRuleVo;
+import org.example.coursework3.vo.SingleBookingVo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/specialist")
@@ -17,39 +23,115 @@ import org.springframework.web.bind.annotation.*;
 public class SpecialistController {
 
     @Autowired
-    private BookingService bookingService;
+    private SpecialistBookingService bookingService;
+    @Autowired
+    private AuthService authService;
+    @Autowired
+    private AdminService adminService;
+    @Autowired
+    private PricingService pricingService;
 
+    // list booking requests
     @GetMapping("/booking-requests")
     public Result<BookingPageResult> getBookingRequests(@RequestHeader("Authorization") String authHeader,
                                                         @RequestParam(required = false) String status,
                                                         @RequestParam(defaultValue = "1") Integer page,
                                                         @RequestParam(defaultValue = "10") Integer pageSize) {
         BookingPageResult pageResult = bookingService.getSpecialistBookings(authHeader, status, page, pageSize);
-        System.out.println(pageResult);
         return Result.success(pageResult);
     }
-
+    // confirm booking
     @PostMapping("/bookings/{id}/confirm")
-    public Result<ConfirmResult> confirmBooking(@RequestHeader("Authorization") String authHeader,
+    public Result<BookingActionResult> confirmBooking(@RequestHeader("Authorization") String authHeader,
                                                 @PathVariable("id") String bookingId) {
-        ConfirmResult confirmResult = bookingService.confirmBooking(authHeader, bookingId);
-        return Result.success(confirmResult);
+        BookingActionResult actionResult = bookingService.confirmBooking(authHeader, bookingId);
+        return Result.success(actionResult);
     }
 
+    // reject booking
     @PostMapping("/bookings/{id}/reject")
-    public Result<RejectResult> rejectBooking(@RequestHeader("Authorization") String authHeader,
+    public Result<BookingActionResult> rejectBooking(@RequestHeader("Authorization") String authHeader,
                                               @PathVariable("id") String bookingId,
                                               @RequestBody(required = false)RejectRequest rejectRequest) {
         String reason = rejectRequest != null? rejectRequest.getReason() : null;
-        RejectResult rejectResult = bookingService.rejectBooking(authHeader,bookingId, reason);
-
-        return Result.success(rejectResult);
+        BookingActionResult actionResult = bookingService.rejectBooking(authHeader,bookingId, reason);
+        return Result.success(actionResult);
     }
+    // complete booking
     @PostMapping("bookings/{id}/complete")
-    public Result<CompleteResult> completeBooking(@RequestHeader("Authorization") String authHeader,
+    public Result<BookingActionResult> completeBooking(@RequestHeader("Authorization") String authHeader,
                                                   @PathVariable("id") String bookingId){
-        CompleteResult completeResult = bookingService.completeBooking(authHeader,bookingId);
-        return Result.success(completeResult);
+        BookingActionResult actionResult = bookingService.completeBooking(authHeader,bookingId);
+        return Result.success(actionResult);
+    }
+    // get detailed booking information
+    @GetMapping("bookings/{id}")
+    public Result<SingleBookingVo> getSingleBookingInfo(@RequestHeader("Authorization") String authHeader, @PathVariable String id){
+        if (!authService.verifyAsSpecialist(authHeader)) {
+            return Result.error("ERROR", "please use Specialist role");
+        }
+        return Result.success(bookingService.getSingleBookingInfo(id));
+    }
+    // create an available slot
+    @PostMapping("/slots")
+    public Result<AdminSlotVo> createSlot(@RequestHeader("Authorization") String authHeader,
+                                          @RequestBody SlotRequest request) {
+        if (!authService.verifyAsSpecialist(authHeader)) {
+            return Result.error("ERROR", "please use Specialist role");
+        }
+        request.setSpecialistId(authService.getUserIdByAuth(authHeader));
+        return Result.success(adminService.createSlot(request));
+    }
+
+    // list all slots
+    @GetMapping("/slots")
+    public Result<List<AdminSlotVo>> listSlots(@RequestHeader("Authorization") String authHeader,
+                                               @RequestParam(required = false) String date,
+                                               @RequestParam(required = false) String from,
+                                               @RequestParam(required = false) String to,
+                                               @RequestParam(required = false) Boolean available) {
+        if (!authService.verifyAsSpecialist(authHeader)) {
+            return Result.error("ERROR", "please use Specialist role");
+        }
+        String specialistId = authService.getUserIdByAuth(authHeader);
+        return Result.success(adminService.listSlots(specialistId, date, from, to, available));
+    }
+    // delete slots
+    @DeleteMapping("/slots/{id}")
+    public Result<Void> deleteSlot(@RequestHeader("Authorization") String authHeader, @PathVariable String id) {
+        if (!authService.verifyAsSpecialist(authHeader)) {
+            return Result.error("ERROR", "please use Specialist role");
+        }
+        adminService.deleteSlot(id);
+        return Result.success("slot deleted successfully");
+    }
+    // update slots
+    @PatchMapping("/slots/{id}")
+    public Result<AdminSlotVo> updateSlot(@RequestHeader("Authorization") String authHeader,
+                                          @PathVariable String id,
+                                          @RequestBody SlotRequest request) {
+        if (!authService.verifyAsSpecialist(authHeader)) {
+            return Result.error("ERROR", "please use Specialist role");
+        }
+        return Result.success(adminService.updateSlot(id, request));
+    }
+    // get detailed slot information
+    @GetMapping("/slots/{id}")
+    public Result<AdminSlotVo> getSingleSlotInfo(@RequestHeader("Authorization") String authHeader,
+                                                 @PathVariable String id){
+        if (!authService.verifyAsSpecialist(authHeader)) {
+            return Result.error("ERROR", "please use Specialist role");
+        }
+        return Result.success(adminService.getSingleSlotInfo(id));
+    }
+
+    @GetMapping("/pricing-rules")
+    public Result<List<PricingRuleVo>> listMyPricingRules(@RequestHeader("Authorization") String authHeader) {
+        if (!authService.verifyAsSpecialist(authHeader)) {
+            return Result.error("ERROR", "please use Specialist role");
+        }
+        String specialistId = authService.getUserIdByAuth(authHeader);
+        return Result.success(pricingService.listRules(specialistId, null, null));
     }
 
 

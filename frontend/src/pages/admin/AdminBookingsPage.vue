@@ -3,7 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { showAlertModal } from '@/ui/alertModal'
 
-const page = ref({ items: [], total: 0, page: 1, pageSize: 10 })
+const PAGE_SIZE = 10
+const page = ref({ items: [], total: 0, page: 1, pageSize: PAGE_SIZE })
 const loading = ref(false)
 const error = ref('')
 const missingApi = ref(false)
@@ -12,6 +13,7 @@ const detailMap = ref({})
 const detailErrorMap = ref({})
 const detailLoadingId = ref('')
 const bookingSearchQuery = ref('')
+const exportLoading = ref(false)
 
 const totalBookings = computed(() => {
   return Math.max(Number(page.value?.total) || 0, (page.value?.items || []).length)
@@ -66,9 +68,13 @@ function bookingNote(row) {
 }
 
 function formatPrice(value) {
-  const amount = Number(value)
+  if (!value) return '--'
+  const str = String(value)
+  const numericPart = str.replace(/[^0-9.]/g, '')
+  const currencyPart = str.replace(/[0-9.]/g, '').trim()
+  const amount = Number(numericPart)
   if (!Number.isFinite(amount)) return '--'
-  return amount.toFixed(2)
+  return `${amount.toFixed(2)} ${currencyPart || ''}`.trim()
 }
 
 function detailRecord(id) {
@@ -95,7 +101,8 @@ async function load() {
   detailErrorMap.value = {}
 
   try {
-    page.value = await api.adminListBookings({ pageSize: 100 })
+    const current = Number(page.value?.page) || 1
+    page.value = await api.adminListBookings({ page: current, pageSize: PAGE_SIZE })
   } catch (e) {
     if (e?.status === 404) {
       missingApi.value = true
@@ -105,10 +112,31 @@ async function load() {
       error.value = e?.message || 'Failed to load bookings'
       showAlertModal({ type: 'error', message: error.value })
     }
-    page.value = { items: [], total: 0, page: 1, pageSize: 10 }
+    page.value = { items: [], total: 0, page: 1, pageSize: PAGE_SIZE }
   } finally {
     loading.value = false
   }
+}
+
+function totalPages() {
+  const total = Number(page.value?.total || 0)
+  return Math.max(1, Math.ceil(total / PAGE_SIZE))
+}
+
+async function prevPage() {
+  if (loading.value) return
+  const current = Number(page.value?.page) || 1
+  if (current <= 1) return
+  page.value = { ...page.value, page: current - 1 }
+  await load()
+}
+
+async function nextPage() {
+  if (loading.value) return
+  const current = Number(page.value?.page) || 1
+  if (current >= totalPages()) return
+  page.value = { ...page.value, page: current + 1 }
+  await load()
 }
 
 async function toggleBooking(row) {
@@ -144,6 +172,28 @@ async function toggleBooking(row) {
   }
 }
 
+async function onExportCsv() {
+  exportLoading.value = true
+  error.value = ''
+  try {
+    const response = await api.adminExportBookings()
+    const  blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'bookings-export.csv'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    error.value = e?.message || 'Export failed'
+    showAlertModal({ type: 'error', message: error.value })
+  } finally {
+    exportLoading.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -172,6 +222,9 @@ onMounted(load)
           />
           <button type="button" class="btn-neutral btn-refresh" :disabled="loading" @click="load">
             {{ loading ? 'Loading...' : 'Refresh' }}
+          </button>
+          <button type="button" class="btn-neutral" :disabled="exportLoading" @click="onExportCsv">
+            {{ exportLoading ? 'Exporting...' : 'Export CSV' }}
           </button>
         </div>
       </div>
@@ -286,6 +339,21 @@ onMounted(load)
             </div>
           </div>
         </article>
+      </div>
+
+      <div v-if="(page.items || []).length && !missingApi" class="pager">
+        <button type="button" class="btn-neutral" :disabled="loading || (page.page ?? 1) <= 1" @click="prevPage">
+          Prev
+        </button>
+        <span class="pager__info">Page {{ page.page }} / {{ totalPages() }} · Total {{ page.total }}</span>
+        <button
+          type="button"
+          class="btn-neutral"
+          :disabled="loading || (page.page ?? 1) >= totalPages()"
+          @click="nextPage"
+        >
+          Next
+        </button>
       </div>
     </section>
   </section>
@@ -421,6 +489,18 @@ onMounted(load)
   color: #374151;
   font-size: 12px;
   font-weight: 700;
+}
+
+.pager {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pager__info {
+  font-size: 13px;
+  color: #475569;
 }
 
 .state {

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
+import { formatReferencePrice } from '@/ui/referencePrice'
 
 const props = defineProps({
   id: { type: String, required: true }
@@ -46,7 +47,7 @@ watch(
   <section class="page">
     <header class="page__header">
       <h1>Specialist Details</h1>
-      <p class="muted mono">specialistId: {{ id }}</p>
+      <p class="subtitle">Review profile, expertise, and reference pricing before booking.</p>
     </header>
 
     <div v-if="error" class="banner banner--error" role="alert">{{ error }}</div>
@@ -56,8 +57,16 @@ watch(
       <div class="card">
         <div class="title">{{ specialist.name ?? '—' }}</div>
         <p class="bio">{{ specialist.bio ?? 'No bio available.' }}</p>
-        <p class="muted small">Expertise: {{ expertiseLabel }}</p>
-        <p v-if="specialist.price != null" class="muted small">Reference Price: {{ specialist.price }}</p>
+        <div class="meta-list">
+          <div class="meta-item">
+            <span class="meta-key">Expertise</span>
+            <span class="meta-value">{{ expertiseLabel }}</span>
+          </div>
+          <div v-if="specialist.price != null" class="meta-item">
+            <span class="meta-key">Reference Price</span>
+            <span class="meta-value">{{ formatReferencePrice(specialist.price, specialist.currency) }}</span>
+          </div>
+        </div>
       </div>
 
       <button type="button" class="btn-book" @click="goToBooking">
@@ -68,12 +77,24 @@ watch(
 </template>
 
 <style scoped>
+.page__header {
+  margin: 8px 0 20px;
+  padding: 0;
+}
+
 .page__header h1 {
-  margin: 0 0 6px;
-  font-size: 22px;
+  margin: 0;
+  font-size: clamp(32px, 3.1vw, 38px);
+  font-weight: 800;
+  line-height: 1.12;
+}
+.subtitle {
+  margin: 6px 0 0;
+  color: #4b5563;
+  font-size: 14px;
 }
 .muted {
-  opacity: 0.8;
+  color: #6b7280;
 }
 .small {
   font-size: 12px;
@@ -83,19 +104,47 @@ watch(
   font-size: 13px;
 }
 .card {
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  margin-top: 10px;
+  padding: 16px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.06);
 }
 .title {
   font-weight: 700;
+  font-size: 18px;
   margin-bottom: 8px;
 }
 .bio {
   margin: 0 0 8px;
   line-height: 1.5;
+  color: #334155;
+}
+.meta-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.meta-key {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  background: #f8f5f2;
+  border: 1px solid #d8d1cb;
+  border-radius: 0;
+  padding: 3px 10px;
+}
+.meta-value {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
 }
 .banner {
   margin-top: 14px;
@@ -110,18 +159,19 @@ watch(
 }
 
 .btn-book {
-  width: 100%;
-  margin-top: 20px;
-  padding: 12px 18px;
-  border-radius: 10px;
-  border: none;
-  background: #07c160;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 0;
+  border: 1px solid #a94442;
+  background: #a94442;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 .btn-book:hover {
-  opacity: 0.9;
+  opacity: 0.92;
 }
 </style>
+

@@ -1,12 +1,16 @@
 package org.example.coursework3.service;
 
 import lombok.RequiredArgsConstructor;
+import org.example.coursework3.entity.Specialist;
+import org.example.coursework3.entity.SpecialistStatus;
 import org.example.coursework3.exception.MsgException;
 import org.example.coursework3.entity.Role;
 import org.example.coursework3.entity.User;
+import org.example.coursework3.repository.SpecialistsRepository;
 import org.example.coursework3.repository.UserRepository;
 import org.example.coursework3.dto.response.AuthResult;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.util.concurrent.TimeUnit;
 
@@ -16,11 +20,42 @@ public class AuthService {
 
     private final StringRedisTemplate redisTemplate;
     private final UserRepository userRepository;
+    private final SpecialistsRepository specialistsRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
+
+    public boolean verifyAsAdmin(String authHeader){
+        return getRoleByAuth(authHeader) == Role.Admin;
+    }
+
+    public boolean verifyAsSpecialist(String authHeader){
+        return getRoleByAuth(authHeader) == Role.Specialist;
+    }
+
+    public boolean verifyAsCustomer(String authHeader){
+        return getRoleByAuth(authHeader) == Role.Customer;
+    }
+
+    public Role getRoleByAuth(String authHeader){
+        return getRoleByUserId(getUserIdByAuth(authHeader));
+    }
+
+    public String getUserIdByAuth(String authHeader){
+        String token = authHeader.replace("Bearer ", "");
+        return getUserIdByToken(token);
+    }
 
     public void storeToken(AuthResult result) {
         storeToken(result.getToken(), result.getUser().getId());
     }
 
+    /**
+     * Persists the authentication token in Redis with a 1-day expiration.
+     * Implements "Single Device Login" logic by invalidating any existing tokens for the user.
+     *
+     * Mapping strategy:
+     * 1. auth:token:{token} -> {userId} (Used for authentication)
+     * 2. auth:user:{userId} -> {token}  (Used to track/kick existing sessions)
+     */
     public void storeToken(String token, String userId) {
 
         String tokenKey = "auth:token:" + token;
@@ -58,7 +93,7 @@ public class AuthService {
         String userId = redisTemplate.opsForValue().get(key);
 
         if (userId == null) {
-            throw new MsgException("token无效或已过期");
+            throw new MsgException("Token is invalid or expired");
         }
 
         return userId;
@@ -68,60 +103,71 @@ public class AuthService {
         return userRepository.findById(userId);
 
     }
-
+    /**
+     * Standard email/password login.
+     * Includes a specific check for Specialist accounts to ensure they are not 'Inactive'.
+     */
     public User login(String email, String password) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new MsgException("用户不存在"));
+                .orElseThrow(() -> new MsgException("User does not exist"));
 
         String passwordHash = user.getPasswordHash();
 
-        if (!passwordHash.equals(password)) {
-            throw new MsgException("密码不正确");
+        if (!passwordEncoder.matches(password, passwordHash)) {
+            throw new MsgException("Incorrect password");
         }
-
+        if (Role.Specialist == user.getRole()){
+            Specialist specialist = specialistsRepository.getByUserId(user.getId());
+            if (specialist.getStatus()== SpecialistStatus.Inactive){
+                throw new MsgException("The current expert account is disabled.");
+            }
+        }
         return user;
     }
-
+    /** Authenticates a user via a 6-digit verification code (captcha) stored in Redis. */
     public User loginByCode(String email, String code){
         String cachedCode = redisTemplate.opsForValue().get("captcha:" + email);
         if (cachedCode == null || !cachedCode.equals(code)) {
-            throw new MsgException("验证码错误或已过期");
+            throw new MsgException("Verification code is incorrect or expired");
         }
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new MsgException("该邮箱未注册账号"));
+                .orElseThrow(() -> new MsgException("This email is not registered."));
     }
-
+    /**
+     * Registers a new Customer.
+     * Validates the verification code and ensures the email is unique before persisting.
+     */
     public User register(String name,String email, String code, String password) {
-        // 校验验证码
+        // Verify captcha
         try {
             String cachedCode = redisTemplate.opsForValue().get("captcha:" + email);
             if (cachedCode == null || !cachedCode.equals(code)) {
-                throw new MsgException("验证码错误或已过期");
+                throw new MsgException("Verification code is incorrect or expired");
             }
 
-            // 检查用户是否已存在
+            // Check for existing account
             if (userRepository.findByEmail(email).isPresent()) {
-                throw new MsgException("该邮箱已被注册");
+                throw new MsgException("This email is already registered.");
             }
 
-            // 创建新用户
+            // Create new user entity with encoded password
             User user = new User();
             user.setName(name);
             user.setEmail(email);
             user.setRole(Role.Customer);
-            user.setPasswordHash(password);
+            user.setPasswordHash(passwordEncoder.encode(password));
 
 
             userRepository.save(user);
 
-            // 注册成功后删除验证码
+            // Cleanup: Remove the captcha from Redis upon successful registration
             redisTemplate.delete("captcha:" + email);
             return user;
         } catch (RuntimeException e) {
             throw new RuntimeException(e);
         }
     }
-
+    /** Retrieves the Role associated with a specific User ID. */
     public Role getRoleByUserId(String userId) {
         User user = userRepository.findById(userId);
         return user.getRole();
